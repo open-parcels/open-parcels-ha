@@ -132,3 +132,62 @@ async def test_parcel_tracker_is_not_diagnostic(
     assert entry is not None
     assert entry.entity_category is None
 
+
+async def test_position_time_in_snake_case(
+    hass: HomeAssistant, loaded: MockConfigEntry, stream: FakeStream
+) -> None:
+    """The courier message's `position_at` (newer servers) is read like `positionAt`."""
+    stream.push(
+        "parcel.live_position",
+        json.dumps(
+            {
+                "parcel_id": payloads.PARCEL_A,
+                "latitude": 50.25,
+                "longitude": 8.25,
+                "position_at": "2030-01-02T09:45:00.000Z",
+            }
+        ),
+    )
+    await hass.async_block_till_done()
+    state = hass.states.get(LIVE)
+    assert state.attributes["latitude"] == 50.25
+    assert state.attributes["position_at"] == "2030-01-02T09:45:00.000Z"
+
+
+async def test_courier_stays_at_the_next_stop_until_delivered(
+    hass: HomeAssistant, loaded: MockConfigEntry, stream: FakeStream
+) -> None:
+    """The courier is not hidden one stop away; the delivery ends the tracker."""
+    live = {
+        "state": "next_stop",
+        "stops_away": 1,
+        "latitude": 50.75,
+        "longitude": 8.75,
+        "accuracy": 10,
+        "position_at": "2030-01-02T09:50:00.000Z",
+        "message": None,
+        "updated_at": "2030-01-02T09:50:00.000Z",
+    }
+    parcel = payloads.parcels()[0]
+    parcel.update(live=live, updated_at="2030-01-02T09:50:00.000Z")
+    stream.push(
+        "parcel.live_updated",
+        json.dumps({"parcel": parcel, "old_live_state": "en_route"}),
+        "300",
+    )
+    await hass.async_block_till_done()
+    state = hass.states.get(LIVE)
+    assert state.attributes["position_source"] == "courier"
+    assert state.attributes["latitude"] == 50.0
+
+    parcel.update(
+        status="delivered",
+        delivered=True,
+        delivered_at="2030-01-02T10:00:00.000Z",
+        live={**live, "state": "delivered"},
+        updated_at="2030-01-02T10:00:00.000Z",
+    )
+    stream.push("parcel.delivered", json.dumps({"parcel": parcel}), "301")
+    await hass.async_block_till_done()
+    assert hass.states.get(LIVE) is None
+    assert payloads.PARCEL_A not in loaded.runtime_data.coordinator.positions

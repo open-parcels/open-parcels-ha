@@ -77,7 +77,7 @@ DEFAULT_DELIVERED_FILTER_AMOUNT = 7
 # Keep each parcel's history attribute well under HA's ~16 KB attribute limit.
 HISTORY_MAX_EVENTS = 20
 
-# The server lists at most this many parcels per request.
+# Page size for the parcel list (the server's maximum); further pages follow X-Next-Offset.
 PARCEL_LIST_LIMIT = 1000
 
 # Calendar cache window used for the entity's "next event" state.
@@ -118,6 +118,16 @@ SOURCE_SNAPSHOT_EVENTS = frozenset(
 # have no "idle" state, any other detail on an OK source means it ran but had
 # nothing it could do: the sensor then shows "idle" too.
 NOT_RUN_YET_DETAIL = "Not run yet."
+SOURCE_STATE_EVENT = "source.state_changed"
+# A parcel's place changed (scans placed by their place names): taken as a parcel
+# snapshot, not fired on the bus.
+PARCEL_LOCATION_EVENT = "parcel.location_changed"
+# Orders: patched onto the parcels that carry them, not fired on the bus.
+ORDER_UPDATED_EVENT = "order.updated"
+ORDER_DELETED_EVENT = "order.deleted"
+# After a reconnect that replayed (no `resync`), one REST reload this long after, in
+# case the server pruned short-lived events from the gap without saying so.
+RECONNECT_REFRESH_DELAY_SECONDS = 30.0
 # Stream control messages: both carry the server's current sequence as their id.
 # `ready` opens a stream sent without Last-Event-ID; `resync` says the id sent
 # could not be replayed (too old, or the server's database was reset).
@@ -133,7 +143,8 @@ SIGNAL_LIVE_POSITION = f"{DOMAIN}_live_position_{{}}"
 # them without the server's token: {entry_id}/{parcel_id}, signed.
 PICTURE_URL = "/api/open_parcels/picture/{entry_id}/{parcel_id}"
 
-# Live session states during which the courier's position is meaningful.
-LIVE_TRACKING_STATES = frozenset({"en_route"})
+# Live session states during which the courier's position is shown: until the parcel is
+# delivered (or the session ends), the next stop included.
+LIVE_TRACKING_STATES = frozenset({"en_route", "next_stop"})
 
 ATTRIBUTION = "Data provided by Open Parcels"

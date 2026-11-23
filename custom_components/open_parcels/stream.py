@@ -45,13 +45,21 @@ class _Attempt:
         self.opened_at: float | None = None
 
     def on_open(self) -> None:
-        """Mark the stream connected; resync when no Last-Event-ID could be sent."""
+        """Mark the stream connected; resync when no Last-Event-ID could be sent.
+
+        A reconnect that sent one gets a replay, and a `resync` when the server
+        could not replay everything. The server may also prune short-lived events
+        from the gap without saying so, so one reload follows a little later
+        unless `resync` already started one.
+        """
         self.opened_at = self._hass.loop.time()
         self._coordinator.async_set_stream_connected(True)
         if self._resync:
             # Directly, not through the debouncer: its cooldown would hold back the
             # next refresh someone asks for (a button, a service call).
             self._coordinator.async_start_refresh(debounced=False)
+        else:
+            self._coordinator.async_schedule_reconnect_refresh()
 
 
 def _handle(coordinator: OpenParcelsCoordinator, message: SseMessage) -> None:

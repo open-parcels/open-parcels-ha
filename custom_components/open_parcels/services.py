@@ -14,7 +14,7 @@ from homeassistant.core import (
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 
-from .api import OpenParcelsApiError, OpenParcelsError
+from .api import OpenParcelsApiError, OpenParcelsError, OpenParcelsNotFoundError
 from .const import DOMAIN
 from .schema import vol
 
@@ -136,11 +136,20 @@ async def _archive(call: ServiceCall) -> None:
         raise ServiceValidationError(
             translation_domain=DOMAIN, translation_key="parcel_required"
         )
+    coordinator = entry.runtime_data.coordinator
     try:
         await entry.runtime_data.client.async_archive_parcel(str(parcel["id"]))
+    except OpenParcelsNotFoundError as err:
+        # Gone on the server (deleted, or hidden with its disabled source).
+        coordinator.async_forget_parcel(str(parcel["id"]))
+        raise ServiceValidationError(
+            translation_domain=DOMAIN,
+            translation_key="parcel_not_found",
+            translation_placeholders={"parcel": str(parcel.get("barcode") or "")},
+        ) from err
     except OpenParcelsError as err:
         raise _api_error(err) from err
-    await entry.runtime_data.coordinator.async_request_refresh()
+    await coordinator.async_request_refresh()
 
 
 async def _refresh(call: ServiceCall) -> None:

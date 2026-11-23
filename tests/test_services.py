@@ -13,6 +13,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.open_parcels.api import (
     OpenParcelsApiError,
     OpenParcelsConnectionError,
+    OpenParcelsNotFoundError,
 )
 from custom_components.open_parcels.const import CONF_API_TOKEN, DOMAIN
 
@@ -87,6 +88,22 @@ async def test_archive_errors(
         await hass.services.async_call(
             DOMAIN, "archive_parcel", {"parcel_id": payloads.PARCEL_B}, blocking=True
         )
+
+
+async def test_archive_of_a_parcel_the_server_no_longer_shows(
+    hass: HomeAssistant, loaded: MockConfigEntry, client: MagicMock
+) -> None:
+    """A 404 means the parcel is gone (deleted, or its source disabled): it is dropped."""
+    client.async_archive_parcel.side_effect = OpenParcelsNotFoundError(
+        404, "not_found", None
+    )
+    with pytest.raises(ServiceValidationError):
+        await hass.services.async_call(
+            DOMAIN, "archive_parcel", {"parcel_id": payloads.PARCEL_B}, blocking=True
+        )
+    await hass.async_block_till_done()
+    assert payloads.PARCEL_B not in loaded.runtime_data.coordinator.data.parcels
+    assert hass.states.get("device_tracker.gls_99999_parcel_test0000000002") is None
 
 
 async def test_refresh(

@@ -17,11 +17,9 @@ from pytest_homeassistant_custom_component.common import (
 
 from custom_components.open_parcels.api import OpenParcelsConnectionError
 from custom_components.open_parcels.const import DOMAIN
-from custom_components.open_parcels.coordinator import (
-    OpenParcelsCoordinator,
-    _position_from_live,
-)
+from custom_components.open_parcels.coordinator import OpenParcelsCoordinator
 from custom_components.open_parcels.device import find_device
+from custom_components.open_parcels.merge import position_from_live
 from custom_components.open_parcels.parcels import to_suite_parcel
 
 from . import payloads
@@ -413,13 +411,17 @@ def test_carrier_status_comes_from_the_server() -> None:
     assert suite["carrier_status"] == "out_for_delivery"
 
 
-def test_position_needs_numeric_coordinates() -> None:
-    """A live block without numbers gives no position."""
-    assert _position_from_live({"state": "en_route", "latitude": "x"}) is None
+def test_position_needs_numeric_coordinates_and_an_open_session() -> None:
+    """A live block without numbers, or of a finished session, gives no position."""
+    assert position_from_live({"state": "en_route", "latitude": "x"}) is None
     assert (
-        _position_from_live({"state": "next_stop", "latitude": 1, "longitude": 2})
+        position_from_live({"state": "delivered", "latitude": 1, "longitude": 2})
         is None
     )
+    # The courier stays on the map at the next stop, until the delivery.
+    position = position_from_live({"state": "next_stop", "latitude": 1, "longitude": 2})
+    assert position is not None
+    assert (position.latitude, position.longitude) == (1.0, 2.0)
 
 
 async def test_replayed_event_never_overwrites_newer_state(
@@ -468,25 +470,22 @@ async def test_refresh_asked_during_cooldown_survives_the_event(
 
 
 async def test_events_do_not_postpone_the_periodic_resync(
-    hass: HomeAssistant,
-    loaded: MockConfigEntry,
-    stream: FakeStream,
-    client: MagicMock,
-    freezer: FrozenDateTimeFactory,
+    hass: HomeAssistant, loaded: MockConfigEntry, stream: FakeStream
 ) -> None:
-    """The slow resync runs on time while events keep arriving (HA-003)."""
+    """Events leave the slow resync's timer alone, so it runs on time (HA-003).
+
+    The handle is compared because the test clock cannot move the event loop's
+    own time, which the timer is scheduled on.
+    """
+    coordinator = loaded.runtime_data.coordinator
     await hass.async_block_till_done()
-    before = client.async_get_parcels.await_count
-    for minute in range(1, 31, 5):
-        freezer.tick(timedelta(minutes=5))
-        async_fire_time_changed(hass)
+    scheduled = coordinator._unsub_refresh
+    assert scheduled is not None
+    for seq in range(3):
         stream.push(
             "parcel.status_changed",
             json.dumps({"parcel": _parcel(1, status="returning")}),
-            str(100 + minute),
+            str(100 + seq),
         )
         await hass.async_block_till_done()
-    freezer.tick(timedelta(minutes=1))
-    async_fire_time_changed(hass)
-    await hass.async_block_till_done()
-    assert client.async_get_parcels.await_count == before + 1
+    assert coordinator._unsub_refresh is scheduled

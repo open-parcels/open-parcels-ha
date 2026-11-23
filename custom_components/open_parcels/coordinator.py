@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 import json
 import logging
@@ -31,18 +30,39 @@ from .const import (
     DEFAULT_RESYNC_MINUTES,
     DOMAIN,
     LIVE_POSITION_EVENT,
-    LIVE_TRACKING_STATES,
     OPEN_STATUSES,
+    ORDER_DELETED_EVENT,
+    ORDER_UPDATED_EVENT,
     PARCEL_LIST_LIMIT,
+    PARCEL_LOCATION_EVENT,
     READY_EVENT,
+    RECONNECT_REFRESH_DELAY_SECONDS,
     RESYNC_EVENT,
     SERVER_EVENT_SUFFIXES,
     SETTINGS_UPDATED_EVENT,
     SIGNAL_LIVE_POSITION,
     SOURCE_REMOVED_EVENT,
     SOURCE_SNAPSHOT_EVENTS,
+    SOURCE_STATE_EVENT,
 )
 from .device import find_device, hub_identifier, source_device_info, source_identifier
+from .merge import (
+    GONE_EVENTS,
+    CourierPosition,
+    OpenParcelsData,
+    drop_hidden,
+    hidden,
+    merge_order_deleted,
+    merge_order_updated,
+    merge_parcel,
+    merge_position,
+    merge_source_removed,
+    merge_source_snapshot,
+    merge_source_state,
+    position_from_live,
+    reapply,
+    source_of,
+)
 from .parcels import (
     apply_delivered_filter,
     effective_status,
@@ -69,20 +89,6 @@ _CALENDAR_EVENTS = frozenset(
     }
 )
 
-# Parcel events after which the parcel is gone from the server's lists.
-_GONE_EVENTS = frozenset({"parcel.removed", "parcel.deleted"})
-
-
-@dataclass(slots=True)
-class CourierPosition:
-    """The courier's current position; kept in memory only."""
-
-    latitude: float
-    longitude: float
-    accuracy: float | None
-    position_at: str | None
-    stops_away: int | None
-
 
 @dataclass(frozen=True, slots=True)
 class ParcelPosition:
@@ -94,41 +100,6 @@ class ParcelPosition:
     at: str | None
     source: str
     stops_away: int | None
-
-
-@dataclass(slots=True)
-class OpenParcelsData:
-    """Everything the entities read, as last received from the server."""
-
-    sources: dict[str, dict[str, Any]] = field(default_factory=dict)
-    carriers: dict[str, str] = field(default_factory=dict)
-    parcels: dict[str, dict[str, Any]] = field(default_factory=dict)
-
-
-def _position_from_live(live: Any) -> CourierPosition | None:
-    if not isinstance(live, Mapping) or live.get("state") not in LIVE_TRACKING_STATES:
-        return None
-    lat, lng = live.get("latitude"), live.get("longitude")
-    if not isinstance(lat, (int, float)) or not isinstance(lng, (int, float)):
-        return None
-    accuracy = live.get("accuracy")
-    stops = live.get("stops_away")
-    return CourierPosition(
-        latitude=float(lat),
-        longitude=float(lng),
-        accuracy=float(accuracy) if isinstance(accuracy, (int, float)) else None,
-        position_at=live.get("position_at"),
-        stops_away=stops if isinstance(stops, int) else None,
-    )
-
-
-def _older(parcel: Mapping[str, Any], stored: Mapping[str, Any] | None) -> bool:
-    """Whether an event's parcel is older than the stored one, by `updated_at`."""
-    if stored is None:
-        return False
-    new = dt_util.parse_datetime(str(parcel.get("updated_at") or ""))
-    old = dt_util.parse_datetime(str(stored.get("updated_at") or ""))
-    return new is not None and old is not None and new < old
 
 
 class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
@@ -156,6 +127,21 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
         self.last_event_id: str | None = None
         self.events_received = 0
         self._refresh_wanted = False
+        # Bus-event deduplication: the newest server sequence handled, whether the
+        # current message repeats one, and the change last fired per event and id.
+        self._max_seq: int | None = None
+        self._repeat = False
+        self._fired: dict[tuple[str, str], str] = {}
+        # One reload at a time; while one runs, the messages it may predate.
+        self._reload_lock = asyncio.Lock()
+        self._reload_log: list[tuple[str, dict[str, Any]]] | None = None
+        self._reconnect_debouncer: Debouncer[Any] = Debouncer(
+            hass,
+            _LOGGER,
+            cooldown=RECONNECT_REFRESH_DELAY_SECONDS,
+            immediate=False,
+            function=self.async_request_refresh,
+        )
         self._calendar_debouncer: Debouncer[Any] = Debouncer(
             hass,
             _LOGGER,
@@ -345,6 +331,15 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
     # -------------------------------------------------------------- refreshes
 
     async def _async_update_data(self) -> OpenParcelsData:
+        # One reload at a time: of two overlapping ones, the older could finish last.
+        async with self._reload_lock:
+            self._reload_log = []
+            try:
+                return await self._async_load()
+            finally:
+                self._reload_log = None
+
+    async def _async_load(self) -> OpenParcelsData:
         try:
             sources, carriers, parcels = await asyncio.gather(
                 self.client.async_get_sources(),
@@ -363,7 +358,10 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
                 translation_key="update_failed",
                 translation_placeholders={"error": str(err)},
             ) from err
+        await self.async_refresh_calendar()
 
+        # From here on nothing awaits, so no message slips in between the replay
+        # below and the coordinator taking this snapshot as its data.
         data = OpenParcelsData(
             sources={str(s["id"]): s for s in sources if s.get("id")},
             carriers={
@@ -376,10 +374,19 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
         self.positions = {
             pid: pos
             for pid, raw in data.parcels.items()
-            if (pos := _position_from_live(raw.get("live"))) is not None
+            if (pos := position_from_live(raw.get("live"))) is not None
         }
+        # Messages that arrived while the requests ran may be newer than the
+        # snapshot: apply them again (stale ones are skipped by `updated_at`).
+        for event_type, payload in self._reload_log or []:
+            reapply(
+                data,
+                self.positions,
+                event_type,
+                payload,
+                include_history=self.include_history,
+            )
         self.last_success_time = datetime.now(UTC)
-        await self.async_refresh_calendar()
         return data
 
     async def async_refresh_calendar(self) -> None:
@@ -508,80 +515,106 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
             # `resync` and `ready` carry the server's current sequence: continuing
             # from it is the reset the server asks for.
             self.last_event_id = message.id
+        self._note_sequence(message)
         self.events_received += 1
 
-        if message.event == RESYNC_EVENT:
+        event = message.event
+        if event == RESYNC_EVENT:
             _LOGGER.info(
                 "The server could not replay missed events (%s); reloading everything",
                 payload.get("reason", "unknown"),
             )
+            self._reconnect_debouncer.async_cancel()
             # Not debounced: the reload must not wait behind a cooldown.
             self.async_start_refresh(debounced=False)
             return
-        if message.event == READY_EVENT:
+        if event == READY_EVENT:
             return
-        if message.event == SETTINGS_UPDATED_EVENT:
+        if event == SETTINGS_UPDATED_EVENT:
             # How parcels are named (or the home location) changed on the server:
             # every parcel's display name may differ, so read everything again.
             self.async_start_refresh(debounced=False)
             return
-        if message.event == LIVE_POSITION_EVENT:
+        if self._reload_log is not None:
+            # A reload is in flight: its snapshot may predate this message.
+            self._reload_log.append((event, payload))
+        if event == LIVE_POSITION_EVENT:
             self._apply_position(payload)
             return
-        if message.event == SOURCE_REMOVED_EVENT and self.data is not None:
+        if self.data is None:
+            return
+        if event == SOURCE_REMOVED_EVENT:
             self._apply_source_removed(payload)
             self._calendar_debouncer.async_schedule_call()
-            return
-        if message.event in SOURCE_SNAPSHOT_EVENTS and self.data is not None:
+        elif event in SOURCE_SNAPSHOT_EVENTS:
             self._apply_source_snapshot(payload)
-            return
-        if message.event not in SERVER_EVENT_SUFFIXES or self.data is None:
-            return
-        if message.event == "source.state_changed":
+        elif event == SOURCE_STATE_EVENT:
             self._apply_source_event(payload)
-        else:
-            self._apply_parcel_event(message.event, payload)
-        if message.event in _CALENDAR_EVENTS:
-            self._calendar_debouncer.async_schedule_call()
+        elif event in (ORDER_UPDATED_EVENT, ORDER_DELETED_EVENT):
+            self._apply_order_event(event, payload)
+        elif event == PARCEL_LOCATION_EVENT or event in SERVER_EVENT_SUFFIXES:
+            self._apply_parcel_event(event, payload)
+            if event in _CALENDAR_EVENTS:
+                self._calendar_debouncer.async_schedule_call()
+
+    def _note_sequence(self, message: SseMessage) -> None:
+        """Track the server's sequence; a message at or below it is a repeat."""
+        seq = int(message.id) if message.id and message.id.isdigit() else None
+        if message.event in (READY_EVENT, RESYNC_EVENT):
+            # The server's current sequence, which may also be lower (a reset database).
+            self._max_seq = seq
+            self._repeat = False
+            return
+        self._repeat = (
+            seq is not None and self._max_seq is not None and seq <= self._max_seq
+        )
+        if seq is not None and not self._repeat:
+            self._max_seq = seq
+
+    def _fire_once(
+        self, key: tuple[str, str], change: object, event_data: dict[str, Any]
+    ) -> None:
+        """Fire a bus event unless this exact change was fired already.
+
+        A replayed message (its sequence already seen) and an event repeating the
+        change last fired for the same parcel or source are both dropped, so an
+        automation runs once per change however often the server repeats it.
+        """
+        fingerprint = json.dumps(change, sort_keys=True, default=str)
+        if self._repeat or self._fired.get(key) == fingerprint:
+            _LOGGER.debug("Not firing %s again for the same change", key[0])
+            return
+        self._fired[key] = fingerprint
+        self.hass.bus.async_fire(key[0], event_data)
 
     def _apply_position(self, payload: dict[str, Any]) -> None:
-        parcel_id = payload.get("parcel_id")
-        lat, lng = payload.get("latitude"), payload.get("longitude")
-        if not isinstance(parcel_id, str):
-            return
-        if not isinstance(lat, (int, float)) or not isinstance(lng, (int, float)):
-            self.positions.pop(parcel_id, None)
-        else:
-            accuracy = payload.get("accuracy")
-            stops = payload.get("stops_away")
-            self.positions[parcel_id] = CourierPosition(
-                latitude=float(lat),
-                longitude=float(lng),
-                accuracy=float(accuracy)
-                if isinstance(accuracy, (int, float))
-                else None,
-                position_at=payload.get("position_at") or payload.get("positionAt"),
-                stops_away=stops if isinstance(stops, int) else None,
+        parcel_id = merge_position(self.positions, payload)
+        if parcel_id is not None:
+            async_dispatcher_send(
+                self.hass,
+                SIGNAL_LIVE_POSITION.format(self.config_entry.entry_id),
+                parcel_id,
             )
-        async_dispatcher_send(
-            self.hass,
-            SIGNAL_LIVE_POSITION.format(self.config_entry.entry_id),
-            parcel_id,
-        )
+
+    def _disabled_changed(self) -> None:
+        """A source was enabled or disabled: the server shows or hides its data.
+
+        Hidden parcels go at once; parcels shown again only come with a reload.
+        """
+        drop_hidden(self.data, self.positions)
+        self._want_refresh()
 
     def _apply_source_event(self, payload: dict[str, Any]) -> None:
-        raw_source = payload.get("source")
-        source: dict[str, Any] = raw_source if isinstance(raw_source, dict) else {}
+        source = source_of(payload)
         source_id = str(source.get("id") or "")
-        known = self.data.sources.get(source_id)
-        if known is None:
+        if source_id not in self.data.sources:
             # A source this entry has not seen yet: pick it up with a resync.
             self._want_refresh()
-        else:
-            known["state"] = payload.get("new_state", known.get("state"))
-            known["state_detail"] = payload.get("detail")
-        self.hass.bus.async_fire(
-            f"{DOMAIN}_source_state_changed",
+        elif merge_source_state(self.data, payload):
+            self._disabled_changed()
+        self._fire_once(
+            (f"{DOMAIN}_source_state_changed", source_id),
+            [payload.get("old_state"), payload.get("new_state"), payload.get("detail")],
             {
                 "source_id": source_id,
                 "plugin": source.get("plugin"),
@@ -603,21 +636,13 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
         is kept, since that is stored apart. A source not seen before is also
         reloaded over REST for the fields the event does not carry (run times).
         """
-        raw_source = payload.get("source")
-        source: dict[str, Any] = raw_source if isinstance(raw_source, dict) else {}
-        source_id = str(source.get("id") or "")
-        if not source_id:
+        if not source_of(payload).get("id"):
             return
-        known = self.data.sources.get(source_id)
-        if known is None:
-            known = self.data.sources[source_id] = {"id": source_id}
+        new, crossed = merge_source_snapshot(self.data, payload)
+        if new:
             self._want_refresh()
-        for key in ("plugin", "label", "kind"):
-            if key in source:
-                known[key] = source[key]
-        if "state" in payload:
-            known["state"] = payload["state"]
-            known["state_detail"] = payload.get("detail")
+        if crossed:
+            self._disabled_changed()
         self._publish()
 
     def _apply_source_removed(self, payload: dict[str, Any]) -> None:
@@ -626,28 +651,19 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
         Its parcels lose the link; the registry sync then removes the device and
         reloads the entry, so parcels it owned come back on their new owner.
         """
-        raw_source = payload.get("source")
-        source: dict[str, Any] = raw_source if isinstance(raw_source, dict) else {}
+        source = source_of(payload)
         source_id = str(source.get("id") or "")
         if not source_id:
             return
         # Read the device before the registry sync removes it.
         device_id = self.device_id_for_source(source_id)
-        self.data.sources.pop(source_id, None)
+        merge_source_removed(self.data, payload)
         merged_into = payload.get("merged_into")
-        for pid, parcel in list(self.data.parcels.items()):
-            refs = parcel.get("sources") or []
-            kept = [
-                ref
-                for ref in refs
-                if not (isinstance(ref, Mapping) and ref.get("source_id") == source_id)
-            ]
-            if len(kept) != len(refs):
-                self.data.parcels[pid] = {**parcel, "sources": kept}
         if isinstance(merged_into, str) and merged_into not in self.data.sources:
             self._want_refresh()
-        self.hass.bus.async_fire(
-            f"{DOMAIN}_source_removed",
+        self._fire_once(
+            (f"{DOMAIN}_source_removed", source_id),
+            merged_into,
             {
                 "source_id": source_id,
                 "plugin": source.get("plugin"),
@@ -659,42 +675,56 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
         )
         self._publish()
 
+    def _apply_order_event(self, event_type: str, payload: dict[str, Any]) -> None:
+        """Patch or unlink the order on its parcels; no bus event."""
+        if event_type == ORDER_DELETED_EVENT:
+            changed = merge_order_deleted(self.data, payload)
+        else:
+            changed = merge_order_updated(self.data, payload)
+            # The parcels' own items and pictures may have changed with it.
+            self._want_refresh()
+        if changed:
+            self._publish()
+
     def _apply_parcel_event(self, event_type: str, payload: dict[str, Any]) -> None:
         parcel = payload.get("parcel")
         if not isinstance(parcel, dict) or not parcel.get("id"):
             return
         parcel_id = str(parcel["id"])
         previous = self.data.parcels.get(parcel_id)
-        if event_type not in _GONE_EVENTS and _older(parcel, previous):
-            # A replayed event older than what the last REST load returned: the
-            # bus event still fires (it happened), the newer stored state stays.
-            pass
-        elif event_type in _GONE_EVENTS:
-            self.data.parcels.pop(parcel_id, None)
-            self.positions.pop(parcel_id, None)
-        else:
-            if (
-                not self.include_history
-                and previous is not None
-                and "history" not in parcel
-            ):
-                parcel = {**parcel, "history": previous.get("history", [])}
-            self.data.parcels[parcel_id] = parcel
-            live = parcel.get("live")
-            if (
-                not isinstance(live, dict)
-                or live.get("state") not in LIVE_TRACKING_STATES
-            ):
-                self.positions.pop(parcel_id, None)
-
+        gone = event_type in GONE_EVENTS
+        shown = gone or not hidden(self.data, parcel)
+        merge_parcel(
+            self.data,
+            self.positions,
+            event_type,
+            parcel,
+            include_history=self.include_history,
+        )
         source_id = owner_source_id(parcel)
-        if source_id is None and event_type in _GONE_EVENTS and previous is not None:
+        if source_id is None and gone and previous is not None:
             # A removal's payload may no longer name the parcel's sources: the trigger still
             # belongs on the device of the source that had it, not on the hub.
             source_id = owner_source_id(previous)
         if source_id and source_id not in self.data.sources:
             self._want_refresh()
+        if shown and event_type in SERVER_EVENT_SUFFIXES:
+            self._fire_parcel_event(event_type, payload, parcel, source_id)
+        self._publish()
 
+    def _fire_parcel_event(
+        self,
+        event_type: str,
+        payload: dict[str, Any],
+        parcel: dict[str, Any],
+        source_id: str | None,
+    ) -> None:
+        parcel_id = str(parcel["id"])
+        if event_type in GONE_EVENTS:
+            # Gone: a later registration of the same parcel is news again.
+            self._fired = {
+                key: value for key, value in self._fired.items() if key[1] != parcel_id
+            }
         suite = to_suite_parcel(
             parcel,
             include_history=self.include_history,
@@ -702,8 +732,21 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
         )
         suite.pop("raw", None)
         changes = {k: v for k, v in payload.items() if k != "parcel"}
-        self.hass.bus.async_fire(
-            f"{DOMAIN}_{SERVER_EVENT_SUFFIXES[event_type]}",
+        live = parcel.get("live") if isinstance(parcel.get("live"), dict) else {}
+        # What makes this a new change: the event's own fields plus the parcel's
+        # status, times and courier progress.
+        change = [
+            changes,
+            parcel.get("status"),
+            parcel.get("delivered_at"),
+            parcel.get("planned_from"),
+            parcel.get("planned_to"),
+            live.get("state"),
+            live.get("stops_away"),
+        ]
+        self._fire_once(
+            (f"{DOMAIN}_{SERVER_EVENT_SUFFIXES[event_type]}", parcel_id),
+            change,
             {
                 **suite,
                 **changes,
@@ -711,9 +754,21 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
                 "hub_device_id": self.device_id_for_source(None),
             },
         )
-        self._publish()
+
+    @callback
+    def async_schedule_reconnect_refresh(self) -> None:
+        """Reload once a reconnect's replay is in, unless the server sends `resync`."""
+        self._reconnect_debouncer.async_schedule_call()
+
+    @callback
+    def async_forget_parcel(self, parcel_id: str) -> None:
+        """Drop a parcel the server no longer has (its detail route answered 404)."""
+        if self.data is not None and self.data.parcels.pop(parcel_id, None):
+            self.positions.pop(parcel_id, None)
+            self._publish()
 
     async def async_shutdown(self) -> None:
-        """Cancel the calendar debouncer too."""
+        """Cancel the calendar and reconnect debouncers too."""
         await super().async_shutdown()
         self._calendar_debouncer.async_shutdown()
+        self._reconnect_debouncer.async_shutdown()
