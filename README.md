@@ -22,7 +22,8 @@ server. One integration covers every carrier, shop and mailbox the server follow
 - each **parcel** becomes an entity on its source's device.
 
 Changes arrive live over the server's event stream. A slow full resync runs every 30 minutes to
-catch anything the stream missed. The integration never polls in a tight loop.
+catch anything the stream missed, however busy the stream is. The integration never polls in a
+tight loop.
 
 Coming from the per-carrier parcel integrations or the Parcel Aggregator? See
 [MIGRATION.md](MIGRATION.md) for every renamed entity, attribute, event and service.
@@ -49,7 +50,8 @@ URL and the token.
 **Discovery:**
 - The Open Parcels Home Assistant app announces itself (`discovery: [open_parcels]`). If the app
   passes an `api_token` in its discovery data, the entry is created right away. Otherwise you are
-  asked for a token.
+  asked for a token. When the app announces itself again, the entry takes its current address and
+  token.
 - Servers that advertise `_open-parcels._tcp` over zeroconf are offered too.
 
 The token can be replaced later with *Reconfigure*. If the server ever refuses the token, Home
@@ -85,7 +87,7 @@ name, the name is not repeated. It is linked to the hub (`via_device`).
 | `sensor.<device>_incoming_parcels`, `_en_route_to_pickup_point`, `_awaiting_pickup`, `_delivered_parcels`, `_outgoing_parcels`, `_outgoing_delivered_parcels` | count, with `by_carrier` and `parcels` |
 | `sensor.<device>_next_delivery` | earliest expected delivery of this source |
 | `sensor.<device>_last_successful_update` | the source's last successful run on the server (diagnostic) |
-| `sensor.<device>_source_state` | `ok`, `needs_sign_in`, `error` or `disabled` (diagnostic), with `detail`, `plugin`, `kind`, `last_run_at`, `next_run_at`, `last_ok_at` |
+| `sensor.<device>_source_state` | `ok`, `idle`, `needs_sign_in`, `error` or `disabled` (diagnostic), with `detail`, `plugin`, `kind`, `last_run_at`, `next_run_at`, `last_ok_at` |
 | `binary_sensor.<device>_problem` | on while the source needs a sign-in or fails (diagnostic) |
 | `button.<device>_refresh` | asks the server to run this source now |
 | `device_tracker.<device>_parcel_<barcode>` | one per open parcel (announced, in transit, out for delivery, at a pickup point, returning, problem). State: the status key. On the map once its position is known: the live courier, else the latest scan with coordinates. Delivered and finished parcels get no entity; they are listed in the list sensors (`parcel_ids`, `parcels`). Named by the server's *Default parcel label* setting (its label, item names or the tracking code; entity ids always use the code). Entity picture: a grid of its item pictures (1, 2×2 or 3×3), served by Home Assistant under a signed address. |
@@ -94,7 +96,10 @@ name, the name is not repeated. It is linked to the hub (`via_device`).
 A parcel belongs to the source that follows it as its primary source, then a hand-off, then a
 mailbox.
 
-### Parcel sensors
+When a source is disabled on the server, the server hides the parcels and orders only it
+follows; they disappear from Home Assistant too and come back when the source is enabled again.
+
+### Parcel trackers
 
 The state is the canonical status: `registered`, `in_transit`, `out_for_delivery`,
 `at_pickup_point`, `delivered`, `returning`, `problem` or `unknown`. A manual status set on the
@@ -110,9 +115,8 @@ name), `barcode`, `sender`, `receiver`, `status`, `raw_status`, `delivered`, `de
 - `weight`, `dimensions` and `raw` are always `null`: the server does not publish them.
 - `history` is `null` unless the *Include status history* option is on.
 
-Active parcels and recently delivered ones (see *Delivered parcels* in the options) have
-entities. An entity disappears when its parcel is delivered past the retention window, archived
-or removed.
+Only open parcels have a tracker. A tracker disappears when its parcel is delivered, archived or
+removed; delivered parcels stay in the list sensors (see *Delivered parcels* in the options).
 
 ### Parcel positions
 
@@ -120,12 +124,12 @@ A parcel tracker points at the courier **right now** while a live session runs, 
 latest carrier scan that came with coordinates (`position_source`: `courier` or `scan`). Without
 either it has no coordinates and Home Assistant leaves it off the map; the entity stays, with its
 status as the state. Latitude, longitude, accuracy, the fix time and stops-away are kept out of the
-recorder, so Home Assistant stores no trail. The server stops publishing the courier's position
-once the courier reaches the stop before yours.
+recorder, so Home Assistant stores no trail. The courier stays on the map until the parcel is
+delivered, the last stop included.
 
 ## Events and device triggers
 
-Every server event is fired on the Home Assistant bus as `open_parcels_<type>`:
+These server events are fired on the Home Assistant bus as `open_parcels_<type>`:
 
 | Server event | Home Assistant event / device trigger |
 |---|---|
@@ -141,6 +145,15 @@ Every server event is fired on the Home Assistant bus as `open_parcels_<type>`:
 | `source.state_changed` | `open_parcels_source_state_changed` (`source_id`, `plugin`, `label`, `old_state`, `new_state`, `detail`) |
 | `source.removed` | `open_parcels_source_removed` (`source_id`, `plugin`, `label`, `merged_into`); bus event only, no device trigger |
 
+Other server events update the data without a bus event of their own: `parcel.live_position`
+(the courier's position), `parcel.location_changed` (a parcel placed at a new scan),
+`source.added`, `source.updated` and `source.run_finished` (a source's name and state),
+`order.updated` and `order.deleted` (the order on the parcels), and `settings.updated` (reloads
+everything).
+
+Each change fires once. A message the server replays after a reconnect, or the same change sent
+again, does not fire a second time.
+
 A deleted parcel or source disappears at once: its entities, and the source's device, are removed
 from the registries. Parcels the removed source owned move to their next source's device (or the
 hub). The periodic resync removes anything else the server no longer has.
@@ -150,7 +163,10 @@ Parcel events carry the parcel attributes listed above (without `raw`), the serv
 the same names exist on every device: a source device's triggers fire for its own parcels, the
 hub's for all of them.
 
-- Events missed while the stream was briefly disconnected are replayed with `Last-Event-ID`.
+- Events missed while the stream was disconnected are replayed with `Last-Event-ID`. The server
+  keeps them for 24 hours (short-lived courier and source-run events for 15 minutes). After a
+  longer outage it asks for a full reload instead, and the missed events are not fired. After
+  every reconnect one reload follows anyway, so a gap cannot stay unnoticed.
 - Events from while Home Assistant was not running are not replayed: like the per-carrier
   integrations, a restart does not re-announce old changes.
 
@@ -174,8 +190,9 @@ hub's for all of them.
 
 ## Diagnostics
 
-The diagnostics download redacts the token, the URL, tracking codes, names, addresses, item
-titles, place names, source labels and configuration, and coordinates.
+The diagnostics download redacts the token, the URL, tracking codes, parcel display names, names,
+addresses, shops and order numbers, item titles, place names, source labels and configuration,
+and coordinates.
 
 ## Development
 
