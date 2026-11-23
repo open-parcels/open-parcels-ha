@@ -174,6 +174,36 @@ async def test_discovery_of_configured_server_aborts(
     assert result["type"] is FlowResultType.ABORT
 
 
+async def test_hassio_rediscovery_updates_the_token(
+    hass: HomeAssistant, client: MagicMock
+) -> None:
+    """The app announcing itself again with a new token updates the entry (AP-002)."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id="http://local-open-parcels:3000",
+        data={CONF_URL: "http://local-open-parcels:3000", CONF_API_TOKEN: TOKEN},
+    )
+    entry.add_to_hass(hass)
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": SOURCE_HASSIO},
+        data=HassioServiceInfo(
+            config={
+                "host": "local-open-parcels",
+                "port": 3000,
+                CONF_API_TOKEN: "op_made_up_new_token",
+            },
+            name="Open Parcels",
+            slug="open_parcels",
+            uuid="1234",
+        ),
+    )
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "already_configured"
+    assert entry.data[CONF_API_TOKEN] == "op_made_up_new_token"
+    assert entry.data[CONF_URL] == "http://local-open-parcels:3000"
+
+
 async def test_reauth(
     hass: HomeAssistant, client: MagicMock, loaded: MockConfigEntry
 ) -> None:

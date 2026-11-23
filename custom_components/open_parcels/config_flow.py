@@ -126,7 +126,12 @@ class OpenParcelsConfigFlow(ConfigFlow, domain=DOMAIN):
     async def _async_discovered(self, url: str, token: str | None) -> ConfigFlowResult:
         url = normalize_url(url)
         await self.async_set_unique_id(url)
-        self._abort_if_unique_id_configured(updates={CONF_URL: url})
+        # The app hands over its token again whenever it announces itself: keep the
+        # entry on the token it uses now (the entry reloads when either changed).
+        updates = {CONF_URL: url}
+        if token:
+            updates[CONF_API_TOKEN] = token
+        self._abort_if_unique_id_configured(updates=updates)
         self._discovered_url = url
         self.context["title_placeholders"] = {"url": url}
         if token and await self._validate(url, token) is None:
