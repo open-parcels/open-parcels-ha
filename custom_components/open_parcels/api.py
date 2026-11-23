@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
 import json
@@ -124,6 +124,18 @@ class OpenParcelsClient:
         params: dict[str, str] | None = None,
         body: dict[str, Any] | None = None,
     ) -> Any:
+        answer, _ = await self._exchange(method, path, params=params, body=body)
+        return answer
+
+    async def _exchange(
+        self,
+        method: str,
+        path: str,
+        *,
+        params: dict[str, str] | None = None,
+        body: dict[str, Any] | None = None,
+    ) -> tuple[Any, Mapping[str, str]]:
+        """One request: the decoded answer and the response headers."""
         url = f"{self.base_url}{API_PREFIX}{path}"
         try:
             async with self._session.request(
@@ -137,9 +149,9 @@ class OpenParcelsClient:
                 if response.status >= 400:
                     await _raise_for_status(response)
                 if response.status in (202, 204):
-                    return None
+                    return None, response.headers
                 try:
-                    return await response.json(content_type=None)
+                    return await response.json(content_type=None), response.headers
                 except ValueError as err:
                     # A proxy's HTML page or a cut-off body: the server's answer, not JSON.
                     raise OpenParcelsError(
@@ -176,12 +188,25 @@ class OpenParcelsClient:
     async def async_get_parcels(
         self, *, include_history: bool, limit: int
     ) -> list[dict[str, Any]]:
-        """GET /parcels: every parcel that is not archived."""
-        params = {
-            "include_history": "true" if include_history else "false",
-            "limit": str(limit),
-        }
-        return list(await self._request("GET", "/parcels", params=params))
+        """GET /parcels: every parcel that is not archived, following the pages.
+
+        A full page carries `X-Next-Offset`, the offset of the next one.
+        """
+        parcels: list[dict[str, Any]] = []
+        offset = 0
+        while True:
+            params = {
+                "include_history": "true" if include_history else "false",
+                "limit": str(limit),
+                "offset": str(offset),
+            }
+            page, headers = await self._exchange("GET", "/parcels", params=params)
+            parcels.extend(page)
+            following = headers.get("X-Next-Offset", "")
+            # Only forward: a header that does not move on would loop forever.
+            if not following.isdigit() or int(following) <= offset:
+                return parcels
+            offset = int(following)
 
     async def async_get_calendar(
         self, start: datetime, end: datetime

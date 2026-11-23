@@ -105,6 +105,26 @@ async def test_requests_send_token_and_parse(
             }
 
 
+async def test_parcels_follow_the_next_offset(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
+) -> None:
+    """Every page of GET /parcels is read, as X-Next-Offset points on (HA-004)."""
+    aioclient_mock.get(
+        f"{API}/parcels?offset=2", json=[{"id": "c"}], headers={"X-Next-Offset": "2"}
+    )
+    aioclient_mock.get(
+        f"{API}/parcels?offset=0",
+        json=[{"id": "a"}, {"id": "b"}],
+        headers={"X-Next-Offset": "2"},
+    )
+    client = _client(hass)
+    parcels = await client.async_get_parcels(include_history=False, limit=2)
+    assert [parcel["id"] for parcel in parcels] == ["a", "b", "c"]
+    offsets = [str(url.query["offset"]) for _, url, _, _ in aioclient_mock.mock_calls]
+    # The last page's header does not move on, so reading stops there.
+    assert offsets == ["0", "2"]
+
+
 @pytest.mark.parametrize(
     ("status", "error"),
     [
