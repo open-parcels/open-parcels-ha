@@ -122,3 +122,13 @@ async def test_legacy_parcel_entities_are_removed(
     assert registry.async_get(old_sensor.entity_id) is None
     assert registry.async_get(old_courier.entity_id) is None
     assert hass.states.get(LIVE) is not None
+
+
+async def test_parcel_tracker_is_not_diagnostic(
+    hass: HomeAssistant, loaded: MockConfigEntry
+) -> None:
+    """A parcel tracker is a main entity, not filed under diagnostics (HA-008)."""
+    entry = er.async_get(hass).async_get(LIVE)
+    assert entry is not None
+    assert entry.entity_category is None
+

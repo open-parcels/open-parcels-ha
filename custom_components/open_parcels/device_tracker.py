@@ -45,6 +45,8 @@ class ParcelTracker(OpenParcelsEntity, TrackerEntity):
 
     _attr_translation_key = "parcel"
     _attr_source_type = SourceType.GPS
+    # BaseTrackerEntity files trackers under "diagnostic"; a parcel is a main entity.
+    _attr_entity_category = None
     _unrecorded_attributes = frozenset(
         {
             "raw",
