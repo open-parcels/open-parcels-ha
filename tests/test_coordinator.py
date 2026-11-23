@@ -367,9 +367,7 @@ async def test_resync_removes_what_the_server_no_longer_has(
     await hass.async_block_till_done()
     gls_identifier = (DOMAIN, f"{loaded.entry_id}_source_{payloads.SOURCE_GLS}")
     assert find_device(hass, loaded.entry_id, gls_identifier) is None
-    assert not any(
-        gls_identifier in device.identifiers for device in dr.async_get(hass).devices
-    )
+    assert dr.async_get(hass).async_get_device(identifiers={gls_identifier}) is None
     assert "remove_config_entry_id" not in caplog.text
     assert hass.states.get("device_tracker.gls_99999_parcel_test0000000002") is None
     assert hass.states.get("sensor.open_parcels_incoming_parcels").state == "1"
