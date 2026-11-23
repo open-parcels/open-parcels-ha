@@ -51,7 +51,7 @@ class _Attempt:
         if self._resync:
             # Directly, not through the debouncer: its cooldown would hold back the
             # next refresh someone asks for (a button, a service call).
-            self._hass.async_create_task(self._coordinator.async_refresh())
+            self._coordinator.async_start_refresh(debounced=False)
 
 
 def _handle(coordinator: OpenParcelsCoordinator, message: SseMessage) -> None:

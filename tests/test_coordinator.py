@@ -2,13 +2,18 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
 import json
 from unittest.mock import MagicMock
 
+from freezegun.api import FrozenDateTimeFactory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 import pytest
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant_custom_component.common import (
+    MockConfigEntry,
+    async_fire_time_changed,
+)
 
 from custom_components.open_parcels.api import OpenParcelsConnectionError
 from custom_components.open_parcels.const import DOMAIN
@@ -434,3 +439,54 @@ async def test_replayed_event_never_overwrites_newer_state(
     assert len(fired) == 1
     assert coordinator.data.parcels[stale["id"]] is stored
     assert stored["status"] != "registered"
+
+
+async def test_refresh_asked_during_cooldown_survives_the_event(
+    hass: HomeAssistant,
+    loaded: MockConfigEntry,
+    stream: FakeStream,
+    client: MagicMock,
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """A refresh an event queues inside the debouncer's cooldown still runs (HA-002)."""
+    coordinator = loaded.runtime_data.coordinator
+    # A service call refreshes first: the debouncer's cooldown starts.
+    await coordinator.async_request_refresh()
+    await hass.async_block_till_done()
+    before = client.async_get_sources.await_count
+    # Within the cooldown, an event names a source this entry has not seen.
+    stream.push(
+        "source.state_changed",
+        json.dumps({"source": {"id": "new"}, "old_state": "ok", "new_state": "error"}),
+        "61",
+    )
+    await hass.async_block_till_done()
+    freezer.tick(timedelta(seconds=11))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    assert client.async_get_sources.await_count == before + 1
+
+
+async def test_events_do_not_postpone_the_periodic_resync(
+    hass: HomeAssistant,
+    loaded: MockConfigEntry,
+    stream: FakeStream,
+    client: MagicMock,
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """The slow resync runs on time while events keep arriving (HA-003)."""
+    await hass.async_block_till_done()
+    before = client.async_get_parcels.await_count
+    for minute in range(1, 31, 5):
+        freezer.tick(timedelta(minutes=5))
+        async_fire_time_changed(hass)
+        stream.push(
+            "parcel.status_changed",
+            json.dumps({"parcel": _parcel(1, status="returning")}),
+            str(100 + minute),
+        )
+        await hass.async_block_till_done()
+    freezer.tick(timedelta(minutes=1))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    assert client.async_get_parcels.await_count == before + 1

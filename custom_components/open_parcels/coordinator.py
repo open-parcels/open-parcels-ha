@@ -155,6 +155,7 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
         self.stream_connected = False
         self.last_event_id: str | None = None
         self.events_received = 0
+        self._refresh_wanted = False
         self._calendar_debouncer: Debouncer[Any] = Debouncer(
             hass,
             _LOGGER,
@@ -463,8 +464,38 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
             if self.data is not None:
                 self.async_update_listeners()
 
+    def _publish(self) -> None:
+        """Tell the entities the data changed.
+
+        Not async_set_updated_data: that cancels a refresh already queued on the
+        debouncer and restarts the resync timer, so a steady flow of events would
+        drop refresh requests and postpone the periodic resync forever.
+        """
+        self.async_update_listeners()
+
+    def _want_refresh(self) -> None:
+        """Ask for one REST reload once the current message is handled."""
+        self._refresh_wanted = True
+
+    @callback
+    def async_start_refresh(self, *, debounced: bool) -> None:
+        """Reload over REST in a task tied to the entry."""
+        self.config_entry.async_create_task(
+            self.hass,
+            self.async_request_refresh() if debounced else self.async_refresh(),
+            f"{DOMAIN}_refresh",
+        )
+
     @callback
     def async_handle_message(self, message: SseMessage) -> None:
+        """Apply one event-stream message, then reload once if it asked for that."""
+        self._refresh_wanted = False
+        self._handle_message(message)
+        if self._refresh_wanted:
+            self._refresh_wanted = False
+            self.async_start_refresh(debounced=True)
+
+    def _handle_message(self, message: SseMessage) -> None:
         """Apply one event-stream message and fire the matching bus event."""
         try:
             payload = json.loads(message.data) if message.data else {}
@@ -485,14 +516,14 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
                 payload.get("reason", "unknown"),
             )
             # Not debounced: the reload must not wait behind a cooldown.
-            self.hass.async_create_task(self.async_refresh())
+            self.async_start_refresh(debounced=False)
             return
         if message.event == READY_EVENT:
             return
         if message.event == SETTINGS_UPDATED_EVENT:
             # How parcels are named (or the home location) changed on the server:
             # every parcel's display name may differ, so read everything again.
-            self.hass.async_create_task(self.async_refresh())
+            self.async_start_refresh(debounced=False)
             return
         if message.event == LIVE_POSITION_EVENT:
             self._apply_position(payload)
@@ -545,7 +576,7 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
         known = self.data.sources.get(source_id)
         if known is None:
             # A source this entry has not seen yet: pick it up with a resync.
-            self.hass.async_create_task(self.async_request_refresh())
+            self._want_refresh()
         else:
             known["state"] = payload.get("new_state", known.get("state"))
             known["state_detail"] = payload.get("detail")
@@ -562,7 +593,7 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
                 "hub_device_id": self.device_id_for_source(None),
             },
         )
-        self.async_set_updated_data(self.data)
+        self._publish()
 
     def _apply_source_snapshot(self, payload: dict[str, Any]) -> None:
         """Take a source as an event reports it: added, renamed, or just run.
@@ -580,14 +611,14 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
         known = self.data.sources.get(source_id)
         if known is None:
             known = self.data.sources[source_id] = {"id": source_id}
-            self.hass.async_create_task(self.async_request_refresh())
+            self._want_refresh()
         for key in ("plugin", "label", "kind"):
             if key in source:
                 known[key] = source[key]
         if "state" in payload:
             known["state"] = payload["state"]
             known["state_detail"] = payload.get("detail")
-        self.async_set_updated_data(self.data)
+        self._publish()
 
     def _apply_source_removed(self, payload: dict[str, Any]) -> None:
         """Drop a source the server deleted or merged, with its device.
@@ -614,7 +645,7 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
             if len(kept) != len(refs):
                 self.data.parcels[pid] = {**parcel, "sources": kept}
         if isinstance(merged_into, str) and merged_into not in self.data.sources:
-            self.hass.async_create_task(self.async_request_refresh())
+            self._want_refresh()
         self.hass.bus.async_fire(
             f"{DOMAIN}_source_removed",
             {
@@ -626,7 +657,7 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
                 "hub_device_id": self.device_id_for_source(None),
             },
         )
-        self.async_set_updated_data(self.data)
+        self._publish()
 
     def _apply_parcel_event(self, event_type: str, payload: dict[str, Any]) -> None:
         parcel = payload.get("parcel")
@@ -662,7 +693,7 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
             # belongs on the device of the source that had it, not on the hub.
             source_id = owner_source_id(previous)
         if source_id and source_id not in self.data.sources:
-            self.hass.async_create_task(self.async_request_refresh())
+            self._want_refresh()
 
         suite = to_suite_parcel(
             parcel,
@@ -680,7 +711,7 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
                 "hub_device_id": self.device_id_for_source(None),
             },
         )
-        self.async_set_updated_data(self.data)
+        self._publish()
 
     async def async_shutdown(self) -> None:
         """Cancel the calendar debouncer too."""
