@@ -17,6 +17,9 @@ TO_REDACT = {
     CONF_API_TOKEN,
     CONF_URL,
     "barcode",
+    # The label, the item titles or the tracking code, depending on a server setting.
+    "display_name",
+    "shop",
     "sender",
     "receiver",
     "url",

@@ -77,6 +77,8 @@ def _parcel(**overrides: Any) -> dict[str, Any]:
         "updated_at": "2030-01-02T08:00:00.000Z",
     }
     base.update(overrides)
+    # The server always sends a display name; by default it is the tracking code.
+    base.setdefault("display_name", base["barcode"])
     return base
 
 
