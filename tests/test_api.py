@@ -339,3 +339,16 @@ async def test_ids_are_escaped_in_paths(
     aioclient_mock.post(f"{API}/sources/a%2F..%2Fb/sync", status=202)
     await _client(hass).async_sync_source("a/../b")
     assert str(aioclient_mock.mock_calls[-1][1]).endswith("/sources/a%2F..%2Fb/sync")
+
+
+async def test_parcel_picture(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
+) -> None:
+    """The picture comes as bytes; a parcel without pictures gives None."""
+    aioclient_mock.get(f"{API}/parcels/p/picture", content=b"\x89PNG made up")
+    aioclient_mock.get(f"{API}/parcels/q/picture", status=404, json={})
+    client = _client(hass)
+    assert await client.async_get_parcel_picture("p") == b"\x89PNG made up"
+    assert await client.async_get_parcel_picture("q") is None
+    _, _, _, headers = aioclient_mock.mock_calls[0]
+    assert headers == {"Authorization": f"Bearer {TOKEN}"}

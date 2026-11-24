@@ -170,20 +170,26 @@ class OpenParcelsClient:
         *,
         params: dict[str, str] | None = None,
         body: dict[str, Any] | None = None,
+        binary: bool = False,
     ) -> tuple[Any, Mapping[str, str]]:
-        """One request: the decoded answer and the response headers."""
+        """One request: the decoded answer (bytes when binary) and the headers."""
         url = f"{self.base_url}{API_PREFIX}{path}"
+        headers = self._headers
+        if binary:
+            headers = {"Authorization": headers["Authorization"]}
         try:
             async with self._session.request(
                 method,
                 url,
-                headers=self._headers,
+                headers=headers,
                 params=params,
                 json=body,
                 timeout=REQUEST_TIMEOUT,
             ) as response:
                 if response.status >= 400:
                     await _raise_for_status(response)
+                if binary:
+                    return await response.read(), response.headers
                 if response.status in (202, 204):
                     return None, response.headers
                 try:
@@ -198,20 +204,13 @@ class OpenParcelsClient:
 
     async def async_get_parcel_picture(self, parcel_id: str) -> bytes | None:
         """GET /parcels/{id}/picture: the item pictures as one PNG; None without any."""
-        url = f"{self.base_url}{API_PREFIX}/parcels/{_segment(parcel_id)}/picture"
         try:
-            async with self._session.get(
-                url,
-                headers={"Authorization": f"Bearer {self._token}"},
-                timeout=REQUEST_TIMEOUT,
-            ) as response:
-                if response.status == 404:
-                    return None
-                if response.status >= 400:
-                    await _raise_for_status(response)
-                return await response.read()
-        except (aiohttp.ClientError, TimeoutError) as err:
-            raise OpenParcelsConnectionError(str(err) or type(err).__name__) from err
+            png, _ = await self._exchange(
+                "GET", f"/parcels/{_segment(parcel_id)}/picture", binary=True
+            )
+        except OpenParcelsNotFoundError:
+            return None
+        return bytes(png)
 
     async def async_get_sources(self) -> list[dict[str, Any]]:
         """GET /sources."""

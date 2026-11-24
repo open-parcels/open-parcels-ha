@@ -15,7 +15,13 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from . import OpenParcelsConfigEntry
 from .const import SourceState
 from .coordinator import OpenParcelsCoordinator
-from .entity import OpenParcelsEntity, async_add_dynamic, device_for_source
+from .entity import (
+    OpenParcelsEntity,
+    OpenParcelsSourceEntity,
+    async_add_dynamic,
+    device_for_source,
+    source_ids,
+)
 
 PARALLEL_UPDATES = 0
 
@@ -32,7 +38,7 @@ async def async_setup_entry(
         coordinator,
         entry,
         async_add_entities,
-        lambda: coordinator.data.sources if coordinator.data else (),
+        lambda: source_ids(coordinator),
         lambda source_id: [SourceProblemSensor(coordinator, source_id)],
     )
 
@@ -65,7 +71,7 @@ class EventStreamSensor(OpenParcelsEntity, BinarySensorEntity):
         return {"events_received": self.coordinator.events_received}
 
 
-class SourceProblemSensor(OpenParcelsEntity, BinarySensorEntity):
+class SourceProblemSensor(OpenParcelsSourceEntity, BinarySensorEntity):
     """On while the source needs a sign-in or fails."""
 
     _attr_device_class = BinarySensorDeviceClass.PROBLEM
@@ -74,22 +80,12 @@ class SourceProblemSensor(OpenParcelsEntity, BinarySensorEntity):
 
     def __init__(self, coordinator: OpenParcelsCoordinator, source_id: str) -> None:
         """Belongs to the source's device."""
-        super().__init__(coordinator, f"source_{source_id}_problem")
-        self._source_id = source_id
-        self._attr_device_info = device_for_source(coordinator.config_entry, source_id)
-
-    @property
-    def _state(self) -> str | None:
-        data = self.coordinator.data
-        source = data.sources.get(self._source_id) if data else None
-        return source.get("state") if source else None
-
-    @property
-    def available(self) -> bool:
-        """Unavailable once the source is gone."""
-        return super().available and self._state is not None
+        super().__init__(coordinator, source_id, "problem")
 
     @property
     def is_on(self) -> bool:
         """A source that needs a sign-in or reports an error is a problem."""
-        return self._state in (SourceState.NEEDS_SIGN_IN, SourceState.ERROR)
+        return self._source.get("state") in (
+            SourceState.NEEDS_SIGN_IN,
+            SourceState.ERROR,
+        )

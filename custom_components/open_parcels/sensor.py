@@ -22,7 +22,13 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from . import OpenParcelsConfigEntry
 from .const import NOT_RUN_YET_DETAIL, SourceState
 from .coordinator import OpenParcelsCoordinator
-from .entity import OpenParcelsEntity, async_add_dynamic, device_for_source
+from .entity import (
+    OpenParcelsEntity,
+    OpenParcelsSourceEntity,
+    async_add_dynamic,
+    device_for_source,
+    source_ids,
+)
 from .parcels import count_by_carrier, next_delivery, parse_iso
 from .returns import return_summary
 
@@ -80,7 +86,7 @@ async def async_setup_entry(
         coordinator,
         entry,
         async_add_entities,
-        lambda: coordinator.data.sources if coordinator.data else (),
+        lambda: source_ids(coordinator),
         _source_entities,
     )
     async_add_dynamic(
@@ -218,26 +224,7 @@ class LastUpdateSensor(OpenParcelsEntity, SensorEntity):
         return self.coordinator.last_success_time
 
 
-class _SourceEntity(OpenParcelsEntity):
-    def __init__(
-        self, coordinator: OpenParcelsCoordinator, source_id: str, key: str
-    ) -> None:
-        super().__init__(coordinator, _suffix(source_id, key))
-        self._source_id = source_id
-        self._attr_device_info = device_for_source(coordinator.config_entry, source_id)
-
-    @property
-    def _source(self) -> dict[str, Any]:
-        data = self.coordinator.data
-        return (data.sources.get(self._source_id) if data else None) or {}
-
-    @property
-    def available(self) -> bool:
-        """Unavailable once the source is gone from the server."""
-        return super().available and bool(self._source)
-
-
-class SourceLastOkSensor(_SourceEntity, SensorEntity):
+class SourceLastOkSensor(OpenParcelsSourceEntity, SensorEntity):
     """When the source last ran without an error."""
 
     _attr_device_class = SensorDeviceClass.TIMESTAMP
@@ -254,7 +241,7 @@ class SourceLastOkSensor(_SourceEntity, SensorEntity):
         return parse_iso(self._source.get("last_ok_at"))
 
 
-class SourceStateSensor(_SourceEntity, SensorEntity):
+class SourceStateSensor(OpenParcelsSourceEntity, SensorEntity):
     """The source's state: ok, needs sign-in, error or disabled."""
 
     _attr_device_class = SensorDeviceClass.ENUM

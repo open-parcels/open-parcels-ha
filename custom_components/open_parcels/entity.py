@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
+from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import callback
@@ -26,6 +27,34 @@ class OpenParcelsEntity(CoordinatorEntity[OpenParcelsCoordinator]):
         """Set the unique id from the entry id and a suffix."""
         super().__init__(coordinator)
         self._attr_unique_id = f"{coordinator.config_entry.entry_id}_{unique_suffix}"
+
+
+class OpenParcelsSourceEntity(OpenParcelsEntity):
+    """Base for the entities of one source, on that source's device."""
+
+    def __init__(
+        self, coordinator: OpenParcelsCoordinator, source_id: str, key: str
+    ) -> None:
+        """Key the unique id on the source and place the entity on its device."""
+        super().__init__(coordinator, f"source_{source_id}_{key}")
+        self._source_id = source_id
+        self._attr_device_info = device_for_source(coordinator.config_entry, source_id)
+
+    @property
+    def _source(self) -> dict[str, Any]:
+        """The source as last received; empty once it is gone."""
+        data = self.coordinator.data
+        return (data.sources.get(self._source_id) if data else None) or {}
+
+    @property
+    def available(self) -> bool:
+        """Unavailable once the source is gone from the server."""
+        return super().available and bool(self._source)
+
+
+def source_ids(coordinator: OpenParcelsCoordinator) -> Iterable[str]:
+    """The ids of the sources currently known."""
+    return coordinator.data.sources if coordinator.data else ()
 
 
 def device_for_source(entry: ConfigEntry, source_id: str | None) -> DeviceInfo:

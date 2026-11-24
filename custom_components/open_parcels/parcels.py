@@ -11,6 +11,8 @@ import hashlib
 from typing import Any
 
 from .const import (
+    CONF_DELIVERED_FILTER_AMOUNT,
+    CONF_DELIVERED_FILTER_TYPE,
     DEFAULT_DELIVERED_FILTER_AMOUNT,
     DEFAULT_DELIVERED_FILTER_TYPE,
     HISTORY_MAX_EVENTS,
@@ -180,9 +182,9 @@ def apply_delivered_filter(
     now: datetime | None = None,
 ) -> list[dict[str, Any]]:
     """Trim a newest-first delivered list per the suite's retention option."""
-    filter_type = options.get("delivered_filter_type", DEFAULT_DELIVERED_FILTER_TYPE)
+    filter_type = options.get(CONF_DELIVERED_FILTER_TYPE, DEFAULT_DELIVERED_FILTER_TYPE)
     amount = int(
-        options.get("delivered_filter_amount", DEFAULT_DELIVERED_FILTER_AMOUNT)
+        options.get(CONF_DELIVERED_FILTER_AMOUNT, DEFAULT_DELIVERED_FILTER_AMOUNT)
     )
     if filter_type == "days":
         cutoff = (now or datetime.now(UTC)) - timedelta(days=amount)
