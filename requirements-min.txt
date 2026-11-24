@@ -1,0 +1,8 @@
+# The oldest Home Assistant this integration supports (hacs.json): 2025.12.0.
+pytest
+pytest-asyncio
+pytest-cov
+pytest-homeassistant-custom-component==0.13.298
+ruff==0.17.0
+# aiodns of that release breaks on pycares 5.
+pycares<5

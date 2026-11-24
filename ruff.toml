@@ -1,14 +1,15 @@
 # Ruff configuration — Home Assistant core's own ruleset (pyproject.toml on
 # the dev branch, ruff 0.17.0), adapted only where core assumes a newer Home
 # Assistant than this integration supports:
-# - target-version stays at the oldest Python a supported Home Assistant runs.
+# - target-version is the Python of the oldest supported Home Assistant
+#   (2025.12 needs 3.13; mypy.ini says the same).
 # - banned-api drops entries whose replacements (probatio, httpx2, Python
 #   3.14-only annotations) don't exist on older Home Assistant releases.
 # - tests may import from tests, skip docstrings and reach private members.
 # - parent-relative imports are allowed inside the integration's subpackages,
 #   as core allows them inside homeassistant/components/<domain>/.
 
-target-version = "py312"
+target-version = "py313"
 
 [lint]
 select = [

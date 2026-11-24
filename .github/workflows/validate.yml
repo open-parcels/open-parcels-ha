@@ -13,15 +13,20 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # The newest Home Assistant, and the oldest one hacs.json allows.
+        requirements: [requirements-dev.txt, requirements-min.txt]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
-          python-version: "3.14"
-      - run: pip install -r requirements-dev.txt
+          python-version: ${{ matrix.requirements == 'requirements-min.txt' && '3.13' || '3.14' }}
+      - run: pip install -r ${{ matrix.requirements }}
       - run: ruff check .
       - run: ruff format --check .
-      - run: mypy custom_components/open_parcels --ignore-missing-imports
+      - run: mypy custom_components/open_parcels
+        if: matrix.requirements == 'requirements-dev.txt'
       - run: >-
           python -m pytest tests/
           --cov=custom_components.open_parcels --cov-fail-under=95 -v
