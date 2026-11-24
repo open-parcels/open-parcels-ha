@@ -13,8 +13,17 @@ PARCEL_C = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"  # dhl, delivered
 PARCEL_D = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"  # no source, outgoing
 
 CARRIERS: list[dict[str, Any]] = [
-    {"id": "dhl", "name": "DHL"},
-    {"id": "gls", "name": "GLS"},
+    {
+        "id": carrier_id,
+        "name": name,
+        "countries": ["de"],
+        "source_kinds": ["account", "tracking"],
+        "sign_in": "none",
+        "sign_in_flows": [],
+        "config_schema": [],
+        "secret_schema": [],
+    }
+    for carrier_id, name in (("dhl", "DHL"), ("gls", "GLS"))
 ]
 
 SOURCES: list[dict[str, Any]] = [
@@ -75,8 +84,13 @@ def _parcel(**overrides: Any) -> dict[str, Any]:
         "lookup": {"state": "found", "since": None, "checked_at": None},
         "first_seen_at": "2030-01-01T08:00:00.000Z",
         "updated_at": "2030-01-02T08:00:00.000Z",
+        "archived_at": None,
+        "last_scan": None,
     }
     base.update(overrides)
+    # Without a manual status the carrier's view matches the effective one.
+    base.setdefault("carrier_status", base["status"])
+    base.setdefault("carrier_delivered", base["delivered"])
     # The server always sends a display name; by default it is the tracking code.
     base.setdefault("display_name", base["barcode"])
     return base
@@ -87,6 +101,8 @@ def _ref(source_id: str, plugin: str, role: str = "primary") -> dict[str, Any]:
         "source_id": source_id,
         "plugin": plugin,
         "role": role,
+        "kind": "account",
+        "label": "Example account",
         "last_seen_at": "2030-01-02T08:00:00.000Z",
     }
 
@@ -175,6 +191,11 @@ def calendar_entries() -> list[dict[str, Any]]:
             "image_url": None,
             "url": "https://track.example.test/TEST0000000001",
             "pickup_point": None,
+            "start_date": None,
+            "end_date": None,
+            "order_id": None,
+            "return_id": None,
+            "details": [],
         },
         {
             "uid": f"{PARCEL_B}@open-parcels",
@@ -191,6 +212,11 @@ def calendar_entries() -> list[dict[str, Any]]:
             "image_url": None,
             "url": None,
             "pickup_point": "Example Kiosk",
+            "start_date": "2999-01-05",
+            "end_date": "2999-01-06",
+            "order_id": None,
+            "return_id": None,
+            "details": [],
         },
         {
             "uid": f"{PARCEL_C}@open-parcels",
@@ -207,6 +233,11 @@ def calendar_entries() -> list[dict[str, Any]]:
             "image_url": None,
             "url": None,
             "pickup_point": None,
+            "start_date": None,
+            "end_date": None,
+            "order_id": None,
+            "return_id": None,
+            "details": [],
         },
     ]
 
