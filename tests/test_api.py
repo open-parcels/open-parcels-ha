@@ -311,3 +311,17 @@ async def test_stream_errors() -> None:
     with pytest.raises(OpenParcelsConnectionError):
         async for _ in client.async_stream_events(None, 90):
             pass
+
+
+async def test_returns_route(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
+) -> None:
+    """GET /returns asks for the open ones; a server without returns gives none."""
+    aioclient_mock.get(f"{API}/returns", json=[{"id": "r"}])
+    client = _client(hass)
+    assert await client.async_get_returns() == [{"id": "r"}]
+    assert str(aioclient_mock.mock_calls[-1][1]).endswith("/returns?view=open")
+
+    aioclient_mock.clear_requests()
+    aioclient_mock.get(f"{API}/returns", status=404, json={"error": "not_found"})
+    assert await client.async_get_returns() == []

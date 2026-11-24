@@ -163,7 +163,9 @@
       "parcel_live_updated": "A parcel's live courier tracking changed",
       "parcel_removed": "A parcel was removed",
       "parcel_deleted": "A parcel was deleted",
-      "source_state_changed": "A source's state changed"
+      "source_state_changed": "A source's state changed",
+      "return_created": "A return was created",
+      "return_updated": "A return changed"
     }
   },
   "entity": {
@@ -253,6 +255,10 @@
           "disabled": "Disabled",
           "idle": "Idle"
         }
+      },
+      "open_returns": {
+        "name": "Open returns",
+        "unit_of_measurement": "returns"
       }
     }
   },

@@ -71,7 +71,8 @@ Assistant asks for a new one (reauthentication).
 | `sensor.open_parcels_awaiting_pickup` | `awaiting_pickup` | ready to collect | `by_carrier`, `parcels` |
 | `sensor.open_parcels_next_delivery` | `next_delivery` | earliest `planned_from` (timestamp) | `barcode`, `sender`, `receiver`, `by_carrier`, `parcel` |
 | `sensor.open_parcels_last_successful_update` | `last_update` | last full resync (diagnostic) | |
-| `calendar.open_parcels_deliveries` | `deliveries` | next expected delivery | the same entries as the server's calendar and ICS feed |
+| `sensor.open_parcels_open_returns` | `open_returns` | returns still going on (servers with returns) | `returns`: order number, shop, items, status, `return_by`, drop-off options, `free`, cost, label URL |
+| `calendar.open_parcels_deliveries` | `deliveries` | next expected delivery | the same entries as the server's calendar and ICS feed; a return's last day reads "Return by: <item or shop>" with its drop-off options and cost |
 | `button.open_parcels_refresh` | `refresh` | | resyncs everything now |
 | `binary_sensor.open_parcels_event_stream` | `event_stream` | event stream connected (diagnostic) | `events_received` |
 
@@ -143,6 +144,8 @@ These server events are fired on the Home Assistant bus as `open_parcels_<type>`
 | `parcel.removed` | `open_parcels_parcel_removed` |
 | `parcel.deleted` | `open_parcels_parcel_deleted` (deleted on the server, or merged into another parcel: `merged_into`) |
 | `source.state_changed` | `open_parcels_source_state_changed` (`source_id`, `plugin`, `label`, `old_state`, `new_state`, `detail`) |
+| `return.created` | `open_parcels_return_created` (`return_id` plus the `returns` attribute's fields) |
+| `return.updated` | `open_parcels_return_updated` (the same fields) |
 | `source.removed` | `open_parcels_source_removed` (`source_id`, `plugin`, `label`, `merged_into`); bus event only, no device trigger |
 
 Other server events update the data without a bus event of their own: `parcel.live_position`

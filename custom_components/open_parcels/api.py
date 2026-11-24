@@ -215,6 +215,13 @@ class OpenParcelsClient:
         params = {"from": start.isoformat(), "to": end.isoformat()}
         return list(await self._request("GET", "/calendar", params=params))
 
+    async def async_get_returns(self) -> list[dict[str, Any]]:
+        """GET /returns: the open returns; empty on a server without returns."""
+        try:
+            return list(await self._request("GET", "/returns", params={"view": "open"}))
+        except OpenParcelsNotFoundError:
+            return []
+
     async def async_track_parcel(
         self,
         barcode: str,

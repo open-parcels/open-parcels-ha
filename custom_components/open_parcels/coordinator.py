@@ -38,6 +38,7 @@ from .const import (
     READY_EVENT,
     RECONNECT_REFRESH_DELAY_SECONDS,
     RESYNC_EVENT,
+    RETURN_EVENT_SUFFIXES,
     SERVER_EVENT_SUFFIXES,
     SETTINGS_UPDATED_EVENT,
     SIGNAL_LIVE_POSITION,
@@ -56,11 +57,13 @@ from .merge import (
     merge_order_updated,
     merge_parcel,
     merge_position,
+    merge_return,
     merge_source_removed,
     merge_source_snapshot,
     merge_source_state,
     position_from_live,
     reapply,
+    return_of,
     source_of,
 )
 from .parcels import (
@@ -72,6 +75,7 @@ from .parcels import (
     sort_parcels_by_ts,
     to_suite_parcel,
 )
+from .returns import return_summary
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -86,6 +90,7 @@ _CALENDAR_EVENTS = frozenset(
         "parcel.removed",
         "parcel.deleted",
         "parcel.status_changed",
+        *RETURN_EVENT_SUFFIXES,
     }
 )
 
@@ -341,12 +346,13 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
 
     async def _async_load(self) -> OpenParcelsData:
         try:
-            sources, carriers, parcels = await asyncio.gather(
+            sources, carriers, parcels, returns = await asyncio.gather(
                 self.client.async_get_sources(),
                 self.client.async_get_carriers(),
                 self.client.async_get_parcels(
                     include_history=self.include_history, limit=PARCEL_LIST_LIMIT
                 ),
+                self.client.async_get_returns(),
             )
         except OpenParcelsAuthError as err:
             raise ConfigEntryAuthFailed(
@@ -370,6 +376,7 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
                 if c.get("id")
             },
             parcels={str(p["id"]): p for p in parcels if p.get("id")},
+            returns={str(r["id"]): r for r in returns if r.get("id")},
         )
         self.positions = {
             pid: pos
@@ -552,6 +559,9 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
             self._apply_source_event(payload)
         elif event in (ORDER_UPDATED_EVENT, ORDER_DELETED_EVENT):
             self._apply_order_event(event, payload)
+        elif event in RETURN_EVENT_SUFFIXES:
+            self._apply_return_event(event, payload)
+            self._calendar_debouncer.async_schedule_call()
         elif event == PARCEL_LOCATION_EVENT or event in SERVER_EVENT_SUFFIXES:
             self._apply_parcel_event(event, payload)
             if event in _CALENDAR_EVENTS:
@@ -685,6 +695,37 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
             self._want_refresh()
         if changed:
             self._publish()
+
+    def open_returns(self) -> list[dict[str, Any]]:
+        """The open returns, soonest return-by day first (those without one last)."""
+        returns = self.data.returns.values() if self.data else ()
+        return sorted(
+            returns,
+            key=lambda r: (r.get("return_by") is None, str(r.get("return_by") or "")),
+        )
+
+    def _apply_return_event(self, event_type: str, payload: dict[str, Any]) -> None:
+        """Store or drop the return, then fire its bus event once per change."""
+        ret = return_of(payload)
+        if ret is None:
+            return
+        if not merge_return(self.data, ret):
+            return
+        return_id = str(ret["id"])
+        parcel = self.data.parcels.get(str(ret.get("parcel_id") or "")) or {}
+        # What makes this a new change: everything but the timestamps.
+        change = {k: v for k, v in ret.items() if k not in ("created_at", "updated_at")}
+        self._fire_once(
+            (f"{DOMAIN}_{RETURN_EVENT_SUFFIXES[event_type]}", return_id),
+            change,
+            {
+                **return_summary(ret),
+                "return_id": return_id,
+                "device_id": self.device_id_for_source(owner_source_id(parcel)),
+                "hub_device_id": self.device_id_for_source(None),
+            },
+        )
+        self._publish()
 
     def _apply_parcel_event(self, event_type: str, payload: dict[str, Any]) -> None:
         parcel = payload.get("parcel")

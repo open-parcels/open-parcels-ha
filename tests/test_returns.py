@@ -1,0 +1,168 @@
+"""Returns: the open-returns sensor, its bus events, device triggers and calendar entries.
+
+Every id, shop and code here is made up.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+from typing import Any
+
+from homeassistant.components.device_automation import DeviceAutomationType
+from homeassistant.core import HomeAssistant
+from pytest_homeassistant_custom_component.common import (
+    MockConfigEntry,
+    async_get_device_automations,
+)
+
+from custom_components.open_parcels.calendar import to_calendar_event
+from custom_components.open_parcels.const import DOMAIN
+from custom_components.open_parcels.device import find_device
+from custom_components.open_parcels.returns import cost_text, drop_off_text
+
+from . import payloads
+from .conftest import FakeStream, events
+
+SENSOR = "sensor.open_parcels_open_returns"
+
+
+async def _settle(hass: HomeAssistant) -> None:
+    for _ in range(5):
+        await hass.async_block_till_done()
+        await asyncio.sleep(0)
+
+
+def _return(**changes: Any) -> dict[str, Any]:
+    ret = payloads.returns()[0]
+    ret.update(changes)
+    return ret
+
+
+async def test_sensor_from_rest(hass: HomeAssistant, loaded: MockConfigEntry) -> None:
+    """The REST load fills the count and the compact list."""
+    state = hass.states.get(SENSOR)
+    assert state is not None
+    assert state.state == "1"
+    assert state.attributes["returns"] == [
+        {
+            "order_number": "ORDER-0001",
+            "shop": "Example Shop",
+            "items": ["Example shoes"],
+            "status": "label_created",
+            "return_by": "2999-02-01",
+            "drop_off": ["Parcel locker (dhl)", "Any Example store"],
+            "free": True,
+            "cost": "Free return",
+            "label_url": "https://shop.example.test/label/1",
+        }
+    ]
+
+
+async def test_events_update_and_fire_once(
+    hass: HomeAssistant, loaded: MockConfigEntry, stream: FakeStream
+) -> None:
+    """Return events update the sensor and fire once per change, never on replays."""
+    created = events(hass, f"{DOMAIN}_return_created")
+    updated = events(hass, f"{DOMAIN}_return_updated")
+    other = "12345678-1234-4234-8234-123456789012"
+    new = _return(id=other, order_number="ORDER-0002", return_by="2999-01-15")
+    stream.push("return.created", json.dumps({"return": new}), "100")
+    await _settle(hass)
+    state = hass.states.get(SENSOR)
+    assert state.state == "2"
+    # Soonest return-by day first.
+    assert state.attributes["returns"][0]["order_number"] == "ORDER-0002"
+    assert len(created) == 1
+    assert created[0].data["return_id"] == other
+    assert created[0].data["hub_device_id"] is not None
+
+    # A replay of the same message, and a repeat with only a new timestamp: no event.
+    stream.push("return.created", json.dumps({"return": new}), "100")
+    later = {**new, "updated_at": "2999-01-01T11:00:00.000Z"}
+    stream.push("return.updated", json.dumps({"return": later}), "101")
+    stream.push("return.updated", json.dumps({"return": later}), "102")
+    await _settle(hass)
+    assert len(created) == 1
+    assert len(updated) == 1
+
+    # Dropped off: a new change fires; a stale (older) one is ignored.
+    dropped = {**later, "status": "dropped_off", "updated_at": "2999-01-01T12:00:00Z"}
+    stream.push("return.updated", json.dumps({"return": dropped}), "103")
+    stale = {**later, "status": "requested", "updated_at": "2999-01-01T09:00:00Z"}
+    stream.push("return.updated", json.dumps({"return": stale}), "104")
+    await _settle(hass)
+    assert [e.data["status"] for e in updated] == ["label_created", "dropped_off"]
+
+    # Refunded: no longer open.
+    done = {**dropped, "status": "refunded", "updated_at": "2999-01-02T12:00:00Z"}
+    stream.push("return.updated", json.dumps({"return": done}), "105")
+    stream.push("return.updated", json.dumps({"bogus": True}), "106")
+    await _settle(hass)
+    assert hass.states.get(SENSOR).state == "1"
+    assert len(updated) == 3
+
+
+async def test_order_deleted_drops_its_return(
+    hass: HomeAssistant, loaded: MockConfigEntry, stream: FakeStream
+) -> None:
+    """A deleted order takes its return along."""
+    payload = {"id": payloads.RETURN_ORDER, "parcel_ids": []}
+    stream.push("order.deleted", json.dumps(payload), "100")
+    await _settle(hass)
+    assert hass.states.get(SENSOR).state == "0"
+
+
+async def test_return_triggers(hass: HomeAssistant, loaded: MockConfigEntry) -> None:
+    """Devices offer the return triggers."""
+    hub = find_device(hass, loaded.entry_id, (DOMAIN, loaded.entry_id))
+    triggers = await async_get_device_automations(
+        hass, DeviceAutomationType.TRIGGER, hub.id
+    )
+    types = {t["type"] for t in triggers if t["domain"] == DOMAIN}
+    assert {"return_created", "return_updated"} <= types
+
+
+async def test_calendar_return_entry(hass: HomeAssistant) -> None:
+    """A return's entry names the item and lists drop-off, cost and label."""
+    await hass.config.async_set_time_zone("UTC")
+    event = to_calendar_event(
+        {
+            "uid": "return-x@open-parcels",
+            "parcel_id": None,
+            "return_id": payloads.RETURN_OPEN,
+            "order_id": payloads.RETURN_ORDER,
+            "title": "Example shoes",
+            "carrier": "dhl",
+            "barcode": "ORDER-0001",
+            "status": "label_created",
+            "kind": "return_by",
+            "details": ["Drop off: Parcel locker (dhl)", "Free return"],
+            "start": "2999-02-01T00:00:00.000Z",
+            "end": "2999-02-02T00:00:00.000Z",
+            "all_day": True,
+            "start_date": "2999-02-01",
+            "end_date": "2999-02-02",
+            "late": False,
+            "image_url": None,
+            "url": "https://shop.example.test/label/1",
+            "pickup_point": None,
+        }
+    )
+    assert event is not None
+    assert event.summary == "Return by: Example shoes"
+    assert event.description == (
+        "Order: ORDER-0001\nDrop off: Parcel locker (dhl)\nFree return\n"
+        "Status: label_created\nLabel: https://shop.example.test/label/1"
+    )
+
+
+def test_texts() -> None:
+    """Drop-off and cost words follow the server's."""
+    assert drop_off_text({"kind": "any", "carrier": None}) == "Any drop-off point"
+    assert drop_off_text({"kind": "new_kind"}) == "New kind"
+    assert cost_text(None) is None
+    assert cost_text({"free": False, "amount": None}) == "Return costs money"
+    assert cost_text({"free": False, "amount": 4, "currency": "EUR"}) == (
+        "Return costs 4.00 EUR"
+    )

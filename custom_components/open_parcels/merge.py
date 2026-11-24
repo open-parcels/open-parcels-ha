@@ -15,10 +15,12 @@ from typing import Any
 from homeassistant.util import dt as dt_util
 
 from .const import (
+    CLOSED_RETURN_STATUSES,
     LIVE_POSITION_EVENT,
     LIVE_TRACKING_STATES,
     ORDER_DELETED_EVENT,
     ORDER_UPDATED_EVENT,
+    RETURN_EVENT_SUFFIXES,
     SOURCE_REMOVED_EVENT,
     SOURCE_STATE_EVENT,
     SourceState,
@@ -46,6 +48,8 @@ class OpenParcelsData:
     sources: dict[str, dict[str, Any]] = field(default_factory=dict)
     carriers: dict[str, str] = field(default_factory=dict)
     parcels: dict[str, dict[str, Any]] = field(default_factory=dict)
+    # Open returns by id (refunded, rejected, cancelled and expired ones are dropped).
+    returns: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 
 def _number(value: Any) -> float | None:
@@ -241,7 +245,29 @@ def merge_order_deleted(data: OpenParcelsData, payload: Mapping[str, Any]) -> bo
         if pid in parcel_ids or order.get("id") == order_id:
             data.parcels[pid] = {**parcel, "order": None}
             changed = True
+    for return_id, ret in list(data.returns.items()):
+        if ret.get("order_id") == order_id:
+            data.returns.pop(return_id)
+            changed = True
     return changed
+
+
+def return_of(payload: Mapping[str, Any]) -> dict[str, Any] | None:
+    """The `return` object of a return event; None when missing or malformed."""
+    ret = payload.get("return")
+    return ret if isinstance(ret, dict) and ret.get("id") else None
+
+
+def merge_return(data: OpenParcelsData, ret: dict[str, Any]) -> bool:
+    """Store an open return, or drop a closed one; False when the event is stale."""
+    return_id = str(ret["id"])
+    if older(ret, data.returns.get(return_id)):
+        return False
+    if ret.get("status") in CLOSED_RETURN_STATUSES:
+        data.returns.pop(return_id, None)
+    else:
+        data.returns[return_id] = ret
+    return True
 
 
 def reapply(
@@ -267,6 +293,9 @@ def reapply(
         merge_order_updated(data, payload)
     elif event_type == ORDER_DELETED_EVENT:
         merge_order_deleted(data, payload)
+    elif event_type in RETURN_EVENT_SUFFIXES:
+        if (ret := return_of(payload)) is not None:
+            merge_return(data, ret)
     elif isinstance(parcel := payload.get("parcel"), dict) and parcel.get("id"):
         merge_parcel(
             data, positions, event_type, parcel, include_history=include_history

@@ -163,7 +163,9 @@
       "parcel_live_updated": "Die Live-Verfolgung einer Sendung hat sich geändert",
       "parcel_removed": "Eine Sendung wurde entfernt",
       "parcel_deleted": "Eine Sendung wurde gelöscht",
-      "source_state_changed": "Der Zustand einer Quelle hat sich geändert"
+      "source_state_changed": "Der Zustand einer Quelle hat sich geändert",
+      "return_created": "Eine Rücksendung wurde angelegt",
+      "return_updated": "Eine Rücksendung hat sich geändert"
     }
   },
   "entity": {
@@ -253,6 +255,10 @@
           "disabled": "Deaktiviert",
           "idle": "Untätig"
         }
+      },
+      "open_returns": {
+        "name": "Offene Rücksendungen",
+        "unit_of_measurement": "Rücksendungen"
       }
     }
   },

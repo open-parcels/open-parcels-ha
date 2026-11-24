@@ -209,3 +209,35 @@ def calendar_entries() -> list[dict[str, Any]]:
             "pickup_point": None,
         },
     ]
+
+
+RETURN_OPEN = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
+RETURN_ORDER = "ffffffff-0000-4fff-8fff-ffffffffffff"
+
+
+def returns() -> list[dict[str, Any]]:
+    """Open returns as GET /returns returns them."""
+    return [
+        {
+            "id": RETURN_OPEN,
+            "order_id": RETURN_ORDER,
+            "shop": "Example Shop",
+            "order_number": "ORDER-0001",
+            "status": "label_created",
+            "reason": None,
+            "return_by": "2999-02-01",
+            "drop_off": [
+                {"carrier": "dhl", "kind": "parcel_locker", "description": None},
+                {"carrier": None, "kind": "shop", "description": "Any Example store"},
+            ],
+            "cost": {"free": True, "amount": None, "currency": None},
+            "label_url": "https://shop.example.test/label/1",
+            "carrier": "dhl",
+            "tracking_number": None,
+            "parcel_id": None,
+            "refund": None,
+            "items": [{"title": "Example shoes", "order_item_position": 1}],
+            "created_at": "2999-01-01T10:00:00.000Z",
+            "updated_at": "2999-01-01T10:00:00.000Z",
+        }
+    ]

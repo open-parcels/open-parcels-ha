@@ -24,6 +24,7 @@ from .const import NOT_RUN_YET_DETAIL, SourceState
 from .coordinator import OpenParcelsCoordinator
 from .entity import OpenParcelsEntity, async_add_dynamic, device_for_source
 from .parcels import count_by_carrier, next_delivery, parse_iso
+from .returns import return_summary
 
 # The coordinator fans updates out to every entity.
 PARALLEL_UPDATES = 0
@@ -61,6 +62,7 @@ async def async_setup_entry(
         ListSensor(coordinator, key, None, key) for key in HUB_LIST_KEYS
     ]
     hub.append(NextDeliverySensor(coordinator, None, "next_delivery"))
+    hub.append(OpenReturnsSensor(coordinator))
     hub.append(LastUpdateSensor(coordinator))
     async_add_entities(hub)
 
@@ -168,6 +170,31 @@ class NextDeliverySensor(OpenParcelsEntity, SensorEntity):
             "receiver": parcel.get("receiver") if parcel else None,
             "by_carrier": {label: dt.isoformat() for label, dt in by_carrier.items()},
             "parcel": parcel,
+        }
+
+
+class OpenReturnsSensor(OpenParcelsEntity, SensorEntity):
+    """Returns still going on, soonest return-by day first."""
+
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_translation_key = "open_returns"
+    _unrecorded_attributes = frozenset({"returns"})
+
+    def __init__(self, coordinator: OpenParcelsCoordinator) -> None:
+        """Belongs to the hub."""
+        super().__init__(coordinator, "open_returns")
+        self._attr_device_info = device_for_source(coordinator.config_entry, None)
+
+    @property
+    def native_value(self) -> int:
+        """Number of open returns."""
+        return len(self.coordinator.open_returns())
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Each open return in short: order, shop, status, deadline, drop-off, cost."""
+        return {
+            "returns": [return_summary(ret) for ret in self.coordinator.open_returns()]
         }
 
 

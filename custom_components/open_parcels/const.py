@@ -125,6 +125,13 @@ PARCEL_LOCATION_EVENT = "parcel.location_changed"
 # Orders: patched onto the parcels that carry them, not fired on the bus.
 ORDER_UPDATED_EVENT = "order.updated"
 ORDER_DELETED_EVENT = "order.deleted"
+# Returns: kept in the returns sensor and fired on the bus as f"{DOMAIN}_{suffix}".
+RETURN_EVENT_SUFFIXES: dict[str, str] = {
+    "return.created": "return_created",
+    "return.updated": "return_updated",
+}
+# Return statuses after which a return is no longer open (the server's `closed` view).
+CLOSED_RETURN_STATUSES = frozenset({"refunded", "rejected", "cancelled", "expired"})
 # After a reconnect that replayed (no `resync`), one REST reload this long after, in
 # case the server pruned short-lived events from the gap without saying so.
 RECONNECT_REFRESH_DELAY_SECONDS = 30.0

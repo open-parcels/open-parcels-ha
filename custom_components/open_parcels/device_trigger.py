@@ -14,12 +14,13 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.trigger import TriggerActionType, TriggerInfo
 from homeassistant.helpers.typing import ConfigType
 
-from .const import DOMAIN, SERVER_EVENT_SUFFIXES
+from .const import DOMAIN, RETURN_EVENT_SUFFIXES, SERVER_EVENT_SUFFIXES
 from .schema import vol
 
 # Device-trigger type -> bus event; the type is the event name without the prefix.
 TRIGGER_EVENTS = {
-    suffix: f"{DOMAIN}_{suffix}" for suffix in SERVER_EVENT_SUFFIXES.values()
+    suffix: f"{DOMAIN}_{suffix}"
+    for suffix in (*SERVER_EVENT_SUFFIXES.values(), *RETURN_EVENT_SUFFIXES.values())
 }
 TRIGGER_TYPES = set(TRIGGER_EVENTS)
 

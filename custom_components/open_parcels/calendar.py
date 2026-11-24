@@ -41,19 +41,30 @@ def _local_days(entry: Mapping[str, Any]) -> tuple[date, date] | None:
     return (start, end) if end > start else None
 
 
+def _summary_and_lines(entry: Mapping[str, Any]) -> tuple[str, list[str | None]]:
+    """The event's title and description lines; returns list drop-off and cost."""
+    title = str(entry.get("title") or entry.get("barcode") or "Parcel")
+    status = f"Status: {entry['status']}" if entry.get("status") else None
+    if entry.get("kind") == "return_by":
+        # A return's `barcode` is its order number; `details` its drop-off and cost.
+        details = [str(line) for line in entry.get("details") or [] if line]
+        order = f"Order: {entry['barcode']}" if entry.get("barcode") else None
+        label = f"Label: {entry['url']}" if entry.get("url") else None
+        return f"Return by: {title}", [order, *details, status, label]
+    summary = f"Delivered: {title}" if entry.get("kind") == "delivered" else title
+    carrier_code = " ".join(
+        str(entry[k]) for k in ("carrier", "barcode") if entry.get(k)
+    )
+    return summary, [carrier_code, status, entry.get("url")]
+
+
 def to_calendar_event(entry: Mapping[str, Any]) -> CalendarEvent | None:
     """Turn one server calendar entry into a CalendarEvent."""
     start = parse_iso(entry.get("start"))
     end = parse_iso(entry.get("end"))
     if start is None or end is None:
         return None
-    title = str(entry.get("title") or entry.get("barcode") or "Parcel")
-    summary = f"Delivered: {title}" if entry.get("kind") == "delivered" else title
-    lines = [
-        " ".join(str(entry[k]) for k in ("carrier", "barcode") if entry.get(k)),
-        f"Status: {entry['status']}" if entry.get("status") else None,
-        entry.get("url"),
-    ]
+    summary, lines = _summary_and_lines(entry)
     description = "\n".join(line for line in lines if line) or None
     event_start: date | datetime = start
     event_end: date | datetime = end
