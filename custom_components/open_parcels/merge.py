@@ -154,6 +154,8 @@ def merge_position(
         return None
     position = courier_position(payload)
     if position is None:
+        # Not sent today (the server publishes positions with a fix only), kept so a
+        # fix-less message can never leave a stale marker on the map.
         positions.pop(parcel_id, None)
     else:
         positions[parcel_id] = position

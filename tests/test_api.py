@@ -68,6 +68,14 @@ def test_sse_parser() -> None:
     assert messages[1].id is None
 
 
+def test_sse_event_without_data_dispatches_nothing() -> None:
+    """An `event:` with no `data:` is dropped and does not leak into the next message."""
+    parser = SseParser()
+    lines = ["event: parcel.registered", "", "data: x", ""]
+    messages = [m for line in lines if (m := parser.feed_line(line)) is not None]
+    assert [(m.event, m.data) for m in messages] == [("message", "x")]
+
+
 async def test_requests_send_token_and_parse(
     hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
 ) -> None:

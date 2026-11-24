@@ -94,7 +94,9 @@ class SseParser:
         return None
 
     def _dispatch(self) -> SseMessage | None:
-        if not self._data and not self._event and not self._truncated:
+        if not self._data and not self._truncated:
+            # The SSE spec: an empty data buffer dispatches nothing, even after `event:`.
+            self._event = ""
             self._id = None
             return None
         message = SseMessage(
