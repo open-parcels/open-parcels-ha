@@ -36,6 +36,7 @@ from .api import (
     OpenParcelsConnectionError,
     OpenParcelsError,
     OpenParcelsScopeError,
+    checked_url,
     normalize_url,
 )
 from .const import (
@@ -106,17 +107,25 @@ class OpenParcelsConfigFlow(ConfigFlow, domain=DOMAIN):
         """Ask for the URL and the token."""
         errors: dict[str, str] = {}
         if user_input is not None:
-            url = normalize_url(user_input[CONF_URL])
-            # A flow the user started takes precedence over a leftover one for the same server.
-            await self.async_set_unique_id(url, raise_on_progress=False)
-            self._abort_if_unique_id_configured()
-            error = await self._validate(url, user_input[CONF_API_TOKEN])
-            if error is None:
-                return self.async_create_entry(
-                    title=HUB_NAME,
-                    data={CONF_URL: url, CONF_API_TOKEN: user_input[CONF_API_TOKEN]},
-                )
-            errors["base"] = error
+            try:
+                url = checked_url(user_input[CONF_URL])
+            except ValueError:
+                errors[CONF_URL] = "invalid_url"
+            else:
+                # A flow the user started takes precedence over a leftover one for the
+                # same server.
+                await self.async_set_unique_id(url, raise_on_progress=False)
+                self._abort_if_unique_id_configured()
+                error = await self._validate(url, user_input[CONF_API_TOKEN])
+                if error is None:
+                    return self.async_create_entry(
+                        title=HUB_NAME,
+                        data={
+                            CONF_URL: url,
+                            CONF_API_TOKEN: user_input[CONF_API_TOKEN],
+                        },
+                    )
+                errors["base"] = error
         return self.async_show_form(
             step_id="user",
             data_schema=self.add_suggested_values_to_schema(_user_schema(), user_input),
@@ -215,6 +224,20 @@ class OpenParcelsConfigFlow(ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
+    async def _reconfigure(
+        self, entry: ConfigEntry, user_input: dict[str, Any]
+    ) -> dict[str, str] | None:
+        """Check a changed URL and token; the form's errors, or None."""
+        try:
+            url = checked_url(user_input[CONF_URL])
+        except ValueError:
+            return {CONF_URL: "invalid_url"}
+        if url != entry.unique_id:
+            await self.async_set_unique_id(url)
+            self._abort_if_unique_id_configured()
+        error = await self._validate(url, user_input[CONF_API_TOKEN])
+        return None if error is None else {"base": error}
+
     async def async_step_reconfigure(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
@@ -222,21 +245,17 @@ class OpenParcelsConfigFlow(ConfigFlow, domain=DOMAIN):
         entry = self._get_reconfigure_entry()
         errors: dict[str, str] = {}
         if user_input is not None:
-            url = normalize_url(user_input[CONF_URL])
-            if url != entry.unique_id:
-                await self.async_set_unique_id(url)
-                self._abort_if_unique_id_configured()
-            error = await self._validate(url, user_input[CONF_API_TOKEN])
+            error = await self._reconfigure(entry, user_input)
             if error is None:
                 return self.async_update_reload_and_abort(
                     entry,
-                    unique_id=url,
+                    unique_id=normalize_url(user_input[CONF_URL]),
                     data_updates={
-                        CONF_URL: url,
+                        CONF_URL: normalize_url(user_input[CONF_URL]),
                         CONF_API_TOKEN: user_input[CONF_API_TOKEN],
                     },
                 )
-            errors["base"] = error
+            errors.update(error)
         return self.async_show_form(
             step_id="reconfigure",
             data_schema=_user_schema(entry.data[CONF_URL]),

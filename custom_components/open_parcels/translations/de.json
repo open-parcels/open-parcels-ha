@@ -45,7 +45,8 @@
       "cannot_connect": "Der Server ist nicht erreichbar. Prüfe die Adresse.",
       "invalid_auth": "Der Server hat das API-Token abgelehnt.",
       "missing_scope": "Das API-Token braucht die Berechtigungen read und write.",
-      "unknown": "Der Server hat unerwartet geantwortet."
+      "unknown": "Der Server hat unerwartet geantwortet.",
+      "invalid_url": "Gib eine http://- oder https://-Adresse ohne Benutzername, Passwort, Query oder Fragment ein."
     },
     "abort": {
       "already_configured": "Dieser Open-Parcels-Server ist bereits eingerichtet.",

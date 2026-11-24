@@ -8,9 +8,11 @@ from datetime import datetime
 import json
 import logging
 from typing import Any
+from urllib.parse import quote
 import uuid
 
 import aiohttp
+from yarl import URL
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -114,6 +116,29 @@ def normalize_url(url: str) -> str:
     return base.removesuffix(API_PREFIX)
 
 
+def checked_url(url: str) -> str:
+    """The normalised base URL; ValueError unless it is a plain http(s) address.
+
+    Credentials, a query or a fragment in the address would leak into the device
+    page and error messages, or silently change every request.
+    """
+    base = normalize_url(url)
+    try:
+        parsed = URL(base)
+    except ValueError as err:
+        raise ValueError("not a URL") from err
+    if parsed.scheme not in ("http", "https") or not parsed.host:
+        raise ValueError("needs http:// or https:// and a host")
+    if parsed.user or parsed.password or parsed.query_string or parsed.fragment:
+        raise ValueError("no credentials, query or fragment allowed")
+    return base
+
+
+def _segment(value: str) -> str:
+    """One path segment, escaped: ids from events never change the route."""
+    return quote(value, safe="")
+
+
 class OpenParcelsClient:
     """Thin async client; every method maps to one API route."""
 
@@ -173,7 +198,7 @@ class OpenParcelsClient:
 
     async def async_get_parcel_picture(self, parcel_id: str) -> bytes | None:
         """GET /parcels/{id}/picture: the item pictures as one PNG; None without any."""
-        url = f"{self.base_url}{API_PREFIX}/parcels/{parcel_id}/picture"
+        url = f"{self.base_url}{API_PREFIX}/parcels/{_segment(parcel_id)}/picture"
         try:
             async with self._session.get(
                 url,
@@ -253,13 +278,13 @@ class OpenParcelsClient:
         """PATCH /parcels/{id} with archived=true."""
         return dict(
             await self._request(
-                "PATCH", f"/parcels/{parcel_id}", body={"archived": True}
+                "PATCH", f"/parcels/{_segment(parcel_id)}", body={"archived": True}
             )
         )
 
     async def async_sync_source(self, source_id: str) -> None:
         """POST /sources/{id}/sync."""
-        await self._request("POST", f"/sources/{source_id}/sync")
+        await self._request("POST", f"/sources/{_segment(source_id)}/sync")
 
     async def async_validate(self) -> None:
         """Check the token can read and write, without changing anything.

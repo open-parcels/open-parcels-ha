@@ -45,7 +45,8 @@
       "cannot_connect": "The server could not be reached. Check the address.",
       "invalid_auth": "The server refused the API token.",
       "missing_scope": "The API token needs both the read and the write scope.",
-      "unknown": "The server gave an unexpected answer."
+      "unknown": "The server gave an unexpected answer.",
+      "invalid_url": "Enter an http:// or https:// address without a user name, password, query or fragment."
     },
     "abort": {
       "already_configured": "This Open Parcels server is already set up.",

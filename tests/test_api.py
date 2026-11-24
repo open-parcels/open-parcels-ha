@@ -330,3 +330,12 @@ async def test_returns_route(
     aioclient_mock.clear_requests()
     aioclient_mock.get(f"{API}/returns", status=404, json={"error": "not_found"})
     assert await client.async_get_returns() == []
+
+
+async def test_ids_are_escaped_in_paths(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
+) -> None:
+    """An id cannot change the route it is sent to (HA-020)."""
+    aioclient_mock.post(f"{API}/sources/a%2F..%2Fb/sync", status=202)
+    await _client(hass).async_sync_source("a/../b")
+    assert str(aioclient_mock.mock_calls[-1][1]).endswith("/sources/a%2F..%2Fb/sync")

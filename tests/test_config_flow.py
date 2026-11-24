@@ -69,6 +69,31 @@ async def test_user_flow_errors(
     assert result["type"] is FlowResultType.CREATE_ENTRY
 
 
+@pytest.mark.parametrize(
+    "url",
+    [
+        "open-parcels.example.test:4000",
+        "ftp://open-parcels.example.test",
+        "http://user:secret@open-parcels.example.test",
+        "http://open-parcels.example.test/?a=1",
+        "http://open-parcels.example.test/#top",
+        "http://",
+    ],
+)
+async def test_user_flow_rejects_odd_urls(
+    hass: HomeAssistant, client: MagicMock, url: str
+) -> None:
+    """Only plain http(s) addresses are taken (HA-020)."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_URL: url, CONF_API_TOKEN: TOKEN}
+    )
+    assert result["errors"] == {CONF_URL: "invalid_url"}
+    client.async_validate.assert_not_awaited()
+
+
 async def test_user_flow_already_configured(
     hass: HomeAssistant, client: MagicMock, entry: MockConfigEntry
 ) -> None:
@@ -230,6 +255,10 @@ async def test_reconfigure(
     """URL and token can change; the unique id follows the URL."""
     result = await loaded.start_reconfigure_flow(hass)
     assert result["step_id"] == "reconfigure"
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_URL: "new.example.test", CONF_API_TOKEN: TOKEN}
+    )
+    assert result["errors"] == {CONF_URL: "invalid_url"}
     client.async_validate.side_effect = OpenParcelsConnectionError("down")
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
