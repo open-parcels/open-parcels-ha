@@ -1,0 +1,22 @@
+# The gate that actually runs: workflows do not run under this account.
+# Install once with `pre-commit install`.
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.17.0
+    hooks:
+      - id: ruff-check
+      - id: ruff-format
+  - repo: local
+    hooks:
+      - id: mypy
+        name: mypy
+        entry: mypy custom_components/open_parcels
+        language: system
+        types: [python]
+        pass_filenames: false
+      - id: size-limits
+        name: file and function size limits
+        entry: python -m pytest -q -p no:cacheprovider tests/test_size_limits.py
+        language: system
+        types: [python]
+        pass_filenames: false
