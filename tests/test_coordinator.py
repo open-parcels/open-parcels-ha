@@ -512,3 +512,21 @@ async def test_truncated_message_reloads(
     await hass.async_block_till_done()
     assert coordinator.last_event_id == "80"
     assert client.async_get_sources.await_count == before + 1
+
+
+async def test_views_are_cached_until_the_data_changes(
+    hass: HomeAssistant, loaded: MockConfigEntry, stream: FakeStream
+) -> None:
+    """The suite views are built once per data change, then rebuilt (HA-022)."""
+    coordinator = loaded.runtime_data.coordinator
+    first = coordinator.buckets()
+    assert coordinator.buckets() is first
+    assert coordinator.open_orders() is coordinator.open_orders()
+    stream.push(
+        "parcel.status_changed",
+        json.dumps({"parcel": _parcel(1, status="returning")}),
+        "95",
+    )
+    await hass.async_block_till_done()
+    assert coordinator.buckets() is not first
+    assert coordinator.suite_parcel(payloads.PARCEL_B)["status"] == "returning"

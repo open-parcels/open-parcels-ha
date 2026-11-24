@@ -136,6 +136,9 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
         self.last_event_id: str | None = None
         self.events_received = 0
         self._refresh_wanted = False
+        # Views computed from `data`, dropped whenever the listeners are told it changed
+        # (HA-022): every entity reads them on each update.
+        self._views: dict[object, Any] = {}
         # Bus-event deduplication: the newest server sequence handled, whether the
         # current message repeats one, and the change last fired per event and id.
         self._max_seq: int | None = None
@@ -168,26 +171,37 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
             self.config_entry.options.get(CONF_INCLUDE_HISTORY, DEFAULT_INCLUDE_HISTORY)
         )
 
+    @callback
+    def async_update_listeners(self) -> None:
+        """Drop the cached views, then update the entities."""
+        self._views.clear()
+        super().async_update_listeners()
+
+    @property
+    def _parcels(self) -> dict[str, dict[str, Any]]:
+        """The raw parcels by id; empty before the first load."""
+        return self.data.parcels if self.data else {}
+
+    def _suite_by_id(self) -> dict[str, dict[str, Any]]:
+        """Every parcel in the suite's shape, by id; built once per data change."""
+        cached = self._views.get("suite")
+        if cached is None:
+            cached = self._views["suite"] = {
+                parcel_id: to_suite_parcel(
+                    raw,
+                    include_history=self.include_history,
+                    carrier_names=self.data.carriers,
+                )
+                for parcel_id, raw in self._parcels.items()
+            }
+        return cached
+
     def suite_parcel(self, parcel_id: str) -> dict[str, Any] | None:
         """The suite-shaped parcel for an id, or None when it is gone."""
-        raw = (self.data.parcels if self.data else {}).get(parcel_id)
-        if raw is None:
-            return None
-        return to_suite_parcel(
-            raw, include_history=self.include_history, carrier_names=self.data.carriers
-        )
+        return self._suite_by_id().get(parcel_id)
 
     def _suite_parcels(self) -> list[dict[str, Any]]:
-        if not self.data:
-            return []
-        return [
-            to_suite_parcel(
-                raw,
-                include_history=self.include_history,
-                carrier_names=self.data.carriers,
-            )
-            for raw in self.data.parcels.values()
-        ]
+        return list(self._suite_by_id().values())
 
     def buckets(self, source_id: str | None = None) -> dict[str, list[dict[str, Any]]]:
         """Split parcels into the suite's lists, optionally for one source only.
@@ -195,6 +209,12 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
         ``source_id`` of None means every parcel; pass a source id to get only
         the parcels whose device is that source.
         """
+        key = ("buckets", source_id)
+        if (cached := self._views.get(key)) is None:
+            cached = self._views[key] = self._buckets(source_id)
+        return cached
+
+    def _buckets(self, source_id: str | None) -> dict[str, list[dict[str, Any]]]:
         parcels = self._suite_parcels()
         if source_id is not None:
             parcels = [p for p in parcels if p["source_id"] == source_id]
@@ -258,8 +278,13 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
         Each has its shop, number, items (with the carrying parcel's code when
         known) and parcels (id, code, name, status, delivered).
         """
+        if (cached := self._views.get("orders")) is None:
+            cached = self._views["orders"] = self._open_orders()
+        return cached
+
+    def _open_orders(self) -> dict[str, dict[str, Any]]:
         orders: dict[str, dict[str, Any]] = {}
-        for raw in (self.data.parcels if self.data else {}).values():
+        for raw in self._parcels.values():
             order = raw.get("order")
             if not isinstance(order, dict) or raw.get("direction") == "outgoing":
                 continue
@@ -309,7 +334,7 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
                 source="courier",
                 stops_away=courier.stops_away,
             )
-        raw = (self.data.parcels if self.data else {}).get(parcel_id) or {}
+        raw = self._parcels.get(parcel_id) or {}
         location = raw.get("location") or {}
         latitude, longitude = location.get("latitude"), location.get("longitude")
         if not isinstance(latitude, int | float) or not isinstance(
@@ -508,6 +533,8 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
     def async_handle_message(self, message: SseMessage) -> None:
         """Apply one event-stream message, then reload once if it asked for that."""
         self._refresh_wanted = False
+        # The message may change `data` before the entities hear of it.
+        self._views.clear()
         self._handle_message(message)
         if self._refresh_wanted:
             self._refresh_wanted = False
