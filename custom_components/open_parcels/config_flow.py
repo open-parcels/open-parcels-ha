@@ -284,7 +284,6 @@ class OpenParcelsOptionsFlow(OptionsFlowWithReload):
                 ),
                 vol.Required(
                     CONF_INCLUDE_HISTORY,
-                    CONF_ORDER_ENTITIES,
                     default=options.get(CONF_INCLUDE_HISTORY, DEFAULT_INCLUDE_HISTORY),
                 ): BooleanSelector(),
                 vol.Required(
