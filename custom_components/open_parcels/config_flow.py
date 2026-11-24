@@ -28,7 +28,6 @@ from homeassistant.helpers.selector import (
     TextSelectorType,
 )
 from homeassistant.helpers.service_info.hassio import HassioServiceInfo
-from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
 
 from .api import (
     OpenParcelsAuthError,
@@ -84,6 +83,7 @@ class OpenParcelsConfigFlow(ConfigFlow, domain=DOMAIN):
     def __init__(self) -> None:
         """Start without a discovered server."""
         self._discovered_url: str | None = None
+        self._discovered_token: str | None = None
 
     async def _validate(self, url: str, token: str) -> str | None:
         """Return an error key, or None when the token can read and write."""
@@ -144,9 +144,8 @@ class OpenParcelsConfigFlow(ConfigFlow, domain=DOMAIN):
         self._discovered_url = url
         self.context["title_placeholders"] = {"url": url}
         if token and await self._validate(url, token) is None:
-            return self.async_create_entry(
-                title=HUB_NAME, data={CONF_URL: url, CONF_API_TOKEN: token}
-            )
+            self._discovered_token = token
+            return await self.async_step_hassio_confirm()
         return await self.async_step_discovery_confirm()
 
     async def async_step_hassio(
@@ -154,20 +153,32 @@ class OpenParcelsConfigFlow(ConfigFlow, domain=DOMAIN):
     ) -> ConfigFlowResult:
         """The Open Parcels app announced itself."""
         config = discovery_info.config
+        host, port = config.get("host"), config.get("port")
+        if not host or not port:
+            return self.async_abort(reason="invalid_discovery_info")
         scheme = "https" if config.get("ssl") else "http"
-        url = f"{scheme}://{config['host']}:{config['port']}"
-        return await self._async_discovered(url, config.get(CONF_API_TOKEN))
-
-    async def async_step_zeroconf(
-        self, discovery_info: ZeroconfServiceInfo
-    ) -> ConfigFlowResult:
-        """A server was found on the network."""
-        scheme = "https" if discovery_info.properties.get("tls") == "1" else "http"
-        host = discovery_info.host
-        if ":" in host:
-            host = f"[{host}]"
         return await self._async_discovered(
-            f"{scheme}://{host}:{discovery_info.port}", None
+            f"{scheme}://{host}:{port}", config.get(CONF_API_TOKEN)
+        )
+
+    async def async_step_hassio_confirm(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """The app handed over a working token: the user still confirms the entry."""
+        assert self._discovered_url is not None
+        assert self._discovered_token is not None
+        if user_input is not None:
+            return self.async_create_entry(
+                title=HUB_NAME,
+                data={
+                    CONF_URL: self._discovered_url,
+                    CONF_API_TOKEN: self._discovered_token,
+                },
+            )
+        self._set_confirm_only()
+        return self.async_show_form(
+            step_id="hassio_confirm",
+            description_placeholders={"url": self._discovered_url},
         )
 
     async def async_step_discovery_confirm(

@@ -39,6 +39,10 @@
           "url": "Zum Beispiel http://192.168.1.10:4000 oder die Tailscale-Adresse.",
           "api_token": "Braucht die Berechtigungen read und write."
         }
+      },
+      "hassio_confirm": {
+        "title": "Open Parcels hinzufügen",
+        "description": "Die Open-Parcels-App unter {url} bietet ihr API-Token an. Diesen Server hinzufügen?"
       }
     },
     "error": {
@@ -51,7 +55,8 @@
     "abort": {
       "already_configured": "Dieser Open-Parcels-Server ist bereits eingerichtet.",
       "reauth_successful": "Das API-Token wurde aktualisiert.",
-      "reconfigure_successful": "Die Verbindung wurde aktualisiert."
+      "reconfigure_successful": "Die Verbindung wurde aktualisiert.",
+      "invalid_discovery_info": "Den Erkennungsdaten der App fehlen Host oder Port."
     }
   },
   "options": {

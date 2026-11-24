@@ -49,10 +49,10 @@ URL and the token.
 
 **Discovery:**
 - The Open Parcels Home Assistant app announces itself (`discovery: [open_parcels]`). If the app
-  passes an `api_token` in its discovery data, the entry is created right away. Otherwise you are
+  passes a working `api_token` in its discovery data, you only confirm adding it. Otherwise you are
   asked for a token. When the app announces itself again, the entry takes its current address and
   token.
-- Servers that advertise `_open-parcels._tcp` over zeroconf are offered too.
+- There is no network (zeroconf) discovery: the server does not advertise itself.
 
 The token can be replaced later with *Reconfigure*. If the server ever refuses the token, Home
 Assistant asks for a new one (reauthentication).

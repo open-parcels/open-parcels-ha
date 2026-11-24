@@ -39,6 +39,10 @@
           "url": "For example http://192.168.1.10:4000 or the Tailscale address.",
           "api_token": "Needs the scopes read and write."
         }
+      },
+      "hassio_confirm": {
+        "title": "Add Open Parcels",
+        "description": "The Open Parcels app at {url} offers its API token. Add this server?"
       }
     },
     "error": {
@@ -51,7 +55,8 @@
     "abort": {
       "already_configured": "This Open Parcels server is already set up.",
       "reauth_successful": "The API token was updated.",
-      "reconfigure_successful": "The connection was updated."
+      "reconfigure_successful": "The connection was updated.",
+      "invalid_discovery_info": "The app's discovery data has no host or port."
     }
   },
   "options": {

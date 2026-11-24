@@ -2,15 +2,13 @@
 
 from __future__ import annotations
 
-from ipaddress import ip_address
 from unittest.mock import MagicMock
 
-from homeassistant.config_entries import SOURCE_HASSIO, SOURCE_USER, SOURCE_ZEROCONF
+from homeassistant.config_entries import SOURCE_HASSIO, SOURCE_USER
 from homeassistant.const import CONF_URL
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers.service_info.hassio import HassioServiceInfo
-from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -112,7 +110,7 @@ async def test_user_flow_already_configured(
 async def test_hassio_discovery_with_token(
     hass: HomeAssistant, client: MagicMock
 ) -> None:
-    """The app can hand over a token: the entry is created at once."""
+    """The app can hand over a token: the user only confirms (HA-011)."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": SOURCE_HASSIO},
@@ -123,8 +121,29 @@ async def test_hassio_discovery_with_token(
             uuid="1234",
         ),
     )
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "hassio_confirm"
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
     assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"][CONF_URL] == "http://local-open-parcels:3000"
+    assert result["data"] == {
+        CONF_URL: "http://local-open-parcels:3000",
+        CONF_API_TOKEN: TOKEN,
+    }
+
+
+async def test_hassio_discovery_without_host_aborts(
+    hass: HomeAssistant, client: MagicMock
+) -> None:
+    """Malformed discovery data aborts instead of failing."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": SOURCE_HASSIO},
+        data=HassioServiceInfo(
+            config={"port": 3000}, name="Open Parcels", slug="open_parcels", uuid="1"
+        ),
+    )
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "invalid_discovery_info"
 
 
 async def test_hassio_discovery_asks_for_token(
@@ -154,27 +173,6 @@ async def test_hassio_discovery_asks_for_token(
     )
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"][CONF_URL] == "https://local-open-parcels:3000"
-
-
-async def test_zeroconf_discovery(hass: HomeAssistant, client: MagicMock) -> None:
-    """A server found on the network asks for a token."""
-    info = ZeroconfServiceInfo(
-        ip_address=ip_address("fd00::5"),
-        ip_addresses=[ip_address("fd00::5")],
-        hostname="op.local.",
-        name="Open Parcels._open-parcels._tcp.local.",
-        port=4000,
-        properties={},
-        type="_open-parcels._tcp.local.",
-    )
-    result = await hass.config_entries.flow.async_init(
-        DOMAIN, context={"source": SOURCE_ZEROCONF}, data=info
-    )
-    assert result["step_id"] == "discovery_confirm"
-    result = await hass.config_entries.flow.async_configure(
-        result["flow_id"], {CONF_API_TOKEN: TOKEN}
-    )
-    assert result["data"][CONF_URL] == "http://[fd00::5]:4000"
 
 
 async def test_discovery_of_configured_server_aborts(
