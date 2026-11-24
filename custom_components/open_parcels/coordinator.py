@@ -95,6 +95,10 @@ _CALENDAR_EVENTS = frozenset(
 )
 
 
+# Parcel keys left out of bus events (see _fire_parcel_event).
+_EVENT_DROPPED_KEYS = ("raw", "items", "order", "history", "live", "lookup")
+
+
 @dataclass(frozen=True, slots=True)
 class ParcelPosition:
     """Where a parcel's tracker points: the live courier, or its latest scan."""
@@ -782,7 +786,11 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
             include_history=self.include_history,
             carrier_names=self.data.carriers,
         )
-        suite.pop("raw", None)
+        # Bus events land in the recorder: the bulky and personal parts (items with
+        # prices, the order, history, the live block, the lookup) stay on the
+        # tracker, which keeps them out of history (HA-025).
+        for key in _EVENT_DROPPED_KEYS:
+            suite.pop(key, None)
         changes = {k: v for k, v in payload.items() if k != "parcel"}
         live = parcel.get("live") if isinstance(parcel.get("live"), dict) else {}
         # What makes this a new change: the event's own fields plus the parcel's

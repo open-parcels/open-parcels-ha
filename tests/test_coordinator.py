@@ -60,7 +60,8 @@ async def test_status_change_fires_event_and_updates(
     assert data["barcode"] == "TEST0000000002"
     assert data["old_status"] == "at_pickup_point"
     assert data["new_status"] == "returning"
-    assert "raw" not in data
+    # Bulky and personal parts stay off the bus and out of the recorder (HA-025).
+    assert not {"raw", "items", "order", "history", "live", "lookup"} & set(data)
     gls = find_device(
         hass,
         loaded.entry_id,
