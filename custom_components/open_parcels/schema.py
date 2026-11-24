@@ -10,6 +10,6 @@ from __future__ import annotations
 try:
     import probatio as vol
 except ImportError:  # Home Assistant releases before probatio
-    import voluptuous as vol  # type: ignore[no-redef]  # same API, older releases
+    import voluptuous as vol  # type: ignore[no-redef,unused-ignore]  # same API, older releases
 
 __all__ = ["vol"]

@@ -443,13 +443,13 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
         except OpenParcelsError as err:
             _LOGGER.debug("Could not refresh the calendar: %s", err)
             return
-        if self.data is not None:
+        if self.loaded_data is not None:
             self.async_update_listeners()
 
     @callback
     def async_sync_registry(self) -> None:
         """Create a device per source and drop devices and entities that are gone."""
-        if self.data is None:
+        if self.loaded_data is None:
             return
         entry = self.config_entry
         devices = dr.async_get(self.hass)
@@ -511,7 +511,7 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
         """Record the event stream's state for the diagnostic entity."""
         if self.stream_connected != connected:
             self.stream_connected = connected
-            if self.data is not None:
+            if self.loaded_data is not None:
                 self.async_update_listeners()
 
     def _publish(self) -> None:
@@ -597,7 +597,7 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
         if event == LIVE_POSITION_EVENT:
             self._apply_position(payload)
             return
-        if self.data is None:
+        if self.loaded_data is None:
             return
         if event == SOURCE_REMOVED_EVENT:
             self._apply_source_removed(payload)
@@ -745,6 +745,12 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
         if changed:
             self._publish()
 
+    @property
+    def loaded_data(self) -> OpenParcelsData | None:
+        """`data`, or None before the first refresh (HA types `data` as never None)."""
+        data: OpenParcelsData | None = self.data
+        return data
+
     def open_returns(self) -> list[dict[str, Any]]:
         """The open returns, soonest return-by day first (those without one last)."""
         returns = self.data.returns.values() if self.data else ()
@@ -826,7 +832,8 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
         for key in _EVENT_DROPPED_KEYS:
             suite.pop(key, None)
         changes = {k: v for k, v in payload.items() if k != "parcel"}
-        live = parcel.get("live") if isinstance(parcel.get("live"), dict) else {}
+        live_block = parcel.get("live")
+        live = live_block if isinstance(live_block, dict) else {}
         # What makes this a new change: the event's own fields plus the parcel's
         # status, times and courier progress.
         change = [
@@ -857,7 +864,9 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
     @callback
     def async_forget_parcel(self, parcel_id: str) -> None:
         """Drop a parcel the server no longer has (its detail route answered 404)."""
-        if self.data is not None and self.data.parcels.pop(parcel_id, None):
+        if (data := self.loaded_data) is not None and data.parcels.pop(
+            parcel_id, None
+        ) is not None:
             self.positions.pop(parcel_id, None)
             self._publish()
 

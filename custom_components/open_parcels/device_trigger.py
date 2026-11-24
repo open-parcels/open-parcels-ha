@@ -8,7 +8,13 @@ from __future__ import annotations
 
 from homeassistant.components.device_automation import DEVICE_TRIGGER_BASE_SCHEMA
 from homeassistant.components.homeassistant.triggers import event as event_trigger
-from homeassistant.const import CONF_DEVICE_ID, CONF_DOMAIN, CONF_PLATFORM, CONF_TYPE
+from homeassistant.const import (
+    CONF_DEVICE_ID,
+    CONF_DOMAIN,
+    CONF_EVENT_DATA,
+    CONF_PLATFORM,
+    CONF_TYPE,
+)
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.trigger import TriggerActionType, TriggerInfo
@@ -66,9 +72,9 @@ async def async_attach_trigger(
     key = "hub_device_id" if _is_hub(hass, device_id) else CONF_DEVICE_ID
     event_config = event_trigger.TRIGGER_SCHEMA(
         {
-            event_trigger.CONF_PLATFORM: "event",
+            CONF_PLATFORM: "event",
             event_trigger.CONF_EVENT_TYPE: TRIGGER_EVENTS[config[CONF_TYPE]],
-            event_trigger.CONF_EVENT_DATA: {key: device_id},
+            CONF_EVENT_DATA: {key: device_id},
         }
     )
     return await event_trigger.async_attach_trigger(

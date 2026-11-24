@@ -18,9 +18,9 @@ from http import HTTPStatus
 import time
 
 from aiohttp import web
-from homeassistant.components.http import HomeAssistantView
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.http import HomeAssistantView
 
 from .api import OpenParcelsError
 from .const import CONF_API_TOKEN, DOMAIN, PICTURE_URL

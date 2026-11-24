@@ -69,12 +69,11 @@ class SourceSyncButton(OpenParcelsSourceEntity, ButtonEntity):
             await self.coordinator.client.async_sync_source(self._source_id)
         except OpenParcelsError as err:
             # A captcha pause or the carrier's rate limit: the server says how long.
-            backing_off = (
+            if (
                 isinstance(err, OpenParcelsApiError)
                 and err.status in (409, 429)
                 and err.message
-            )
-            if backing_off:
+            ):
                 raise HomeAssistantError(
                     translation_domain=DOMAIN,
                     translation_key="sync_backing_off",

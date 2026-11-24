@@ -11,7 +11,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from homeassistant.components.device_tracker import SourceType, TrackerEntity
+from homeassistant.components.device_tracker.config_entry import TrackerEntity
+from homeassistant.components.device_tracker.const import SourceType
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
@@ -46,8 +48,12 @@ class ParcelTracker(OpenParcelsEntity, TrackerEntity):
 
     _attr_translation_key = "parcel"
     _attr_source_type = SourceType.GPS
-    # BaseTrackerEntity files trackers under "diagnostic"; a parcel is a main entity.
-    _attr_entity_category = None
+
+    @property
+    def entity_category(self) -> EntityCategory | None:
+        """None: BaseTrackerEntity files trackers under "diagnostic"; a parcel is a main entity."""
+        return None
+
     _unrecorded_attributes = frozenset(
         {
             "raw",
