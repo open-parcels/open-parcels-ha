@@ -88,6 +88,17 @@ async def test_setup_retries_when_server_unreachable(
     await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
     assert entry.state is ConfigEntryState.SETUP_RETRY
+    # A source device of an entry that is not loaded may go; the hub may not (HA-016).
+    devices = dr.async_get(hass)
+    hub = devices.async_get_or_create(
+        config_entry_id=entry.entry_id, identifiers={(DOMAIN, entry.entry_id)}
+    )
+    source = devices.async_get_or_create(
+        config_entry_id=entry.entry_id,
+        identifiers={(DOMAIN, f"{entry.entry_id}_source_{payloads.SOURCE_DHL}")},
+    )
+    assert not await async_remove_config_entry_device(hass, entry, hub)
+    assert await async_remove_config_entry_device(hass, entry, source)
 
 
 async def test_setup_refused_token_starts_reauth(

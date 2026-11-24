@@ -79,10 +79,15 @@ async def async_unload_entry(
 async def async_remove_config_entry_device(
     hass: HomeAssistant, entry: OpenParcelsConfigEntry, device: dr.DeviceEntry
 ) -> bool:
-    """Allow removing a source device only once the source is gone."""
+    """Allow removing a source device only once the source is gone.
+
+    An entry that is not loaded (setup retry, disabled) knows no sources, so
+    any source device may go; the next setup creates the live ones again.
+    """
     if hub_identifier(entry.entry_id) in device.identifiers:
         return False
-    data = entry.runtime_data.coordinator.data
+    runtime = getattr(entry, "runtime_data", None)
+    data = runtime.coordinator.data if runtime is not None else None
     sources = data.sources if data else {}
     return not any(
         source_identifier(entry.entry_id, source_id) in device.identifiers
