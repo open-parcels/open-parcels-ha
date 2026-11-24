@@ -106,6 +106,12 @@ The state is the canonical status: `registered`, `in_transit`, `out_for_delivery
 `at_pickup_point`, `delivered`, `returning`, `problem` or `unknown`. A manual status set on the
 server wins over the carrier's status.
 
+Why a tracker and not a sensor: one entity per parcel can carry both the status and the
+parcel's position on the map. The price is that Home Assistant shows the state as the raw key
+(`in_transit`, not "In transit"), because tracker states are not translated, and it works out
+which zones the courier is in (that is kept out of history, see *What the recorder keeps*). For translated
+states, use the list sensors or the status in the bus events.
+
 The attributes start with the suite's parcel keys, in the suite's order: `carrier` (display
 name), `barcode`, `sender`, `receiver`, `status`, `raw_status`, `delivered`, `delivered_at`,
 `planned_from`, `planned_to`, `pickup`, `pickup_point`, `url`, `weight`, `dimensions`, `history`,
@@ -218,8 +224,13 @@ and coordinates.
 ## Development
 
 The gate is the suite's: `ruff check .`, `ruff format --check .`,
-`mypy custom_components/open_parcels --ignore-missing-imports` and
+`mypy custom_components/open_parcels` (settings in `mypy.ini`) and
 `python -m pytest tests/ --cov=custom_components.open_parcels`. Coverage stays above 95 %.
+`pre-commit install` runs ruff, mypy and the size limits (1000 lines per file, 200 per
+function, `tests/test_size_limits.py`) before each commit.
+
+`requirements-min.txt` pins the oldest supported Home Assistant (2025.12.0, Python 3.13);
+run the tests with it as well before a release.
 
 Current Home Assistant does not import on Windows (`fcntl`). On Windows, run the tests in a
 container:
