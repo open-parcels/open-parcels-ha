@@ -124,9 +124,26 @@ removed; delivered parcels stay in the list sensors (see *Delivered parcels* in 
 A parcel tracker points at the courier **right now** while a live session runs, otherwise at the
 latest carrier scan that came with coordinates (`position_source`: `courier` or `scan`). Without
 either it has no coordinates and Home Assistant leaves it off the map; the entity stays, with its
-status as the state. Latitude, longitude, accuracy, the fix time and stops-away are kept out of the
-recorder, so Home Assistant stores no trail. The courier stays on the map until the parcel is
-delivered, the last stop included.
+status as the state. Latitude, longitude, accuracy, the fix time, stops-away and the zones Home
+Assistant derives from the position (`in_zones`) are kept out of the recorder, so Home Assistant
+stores no trail. The courier stays on the map until the parcel is delivered, the last stop
+included.
+
+### What the recorder keeps
+
+Kept out of history: the trackers' `sender`, `receiver`, `url`, `pickup_point`, `display_name`,
+`label`, `items`, `order`, `history`, `live` and `lookup`; the next-delivery sensors' `barcode`,
+`sender`, `receiver` and `parcel`; the list sensors' `parcels`; the order sensors' `shop`,
+`order_number`, `items` and `parcels`; the returns sensor's `returns`; the calendar's
+`description` and `location`. Still recorded: states, the trackers' `barcode` and status keys,
+and the calendar's `message` (the next entry's title).
+
+Entity ids carry the tracking code (`device_tracker.<device>_parcel_<code>`) and order sensor
+names the order number, so both appear in the states, statistics and logbook tables. They are
+kept so automations written for earlier versions keep working.
+
+Item pictures (`entity_picture`) are served by Home Assistant under a signed address that
+expires after 12 to 24 hours; a copied address stops working after that.
 
 ## Events and device triggers
 
@@ -161,7 +178,8 @@ A deleted parcel or source disappears at once: its entities, and the source's de
 from the registries. Parcels the removed source owned move to their next source's device (or the
 hub). The periodic resync removes anything else the server no longer has.
 
-Parcel events carry the parcel attributes listed above (without `raw`), the server's `old_*` and
+Parcel events carry the parcel attributes listed above (without `raw`, `items`, `order`,
+`history`, `live` and `lookup`, which would fill the recorder's event tables), the server's `old_*` and
 `new_*` fields, `device_id` (the parcel's source device) and `hub_device_id`. Device triggers of
 the same names exist on every device: a source device's triggers fire for its own parcels, the
 hub's for all of them.
