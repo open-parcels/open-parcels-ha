@@ -511,6 +511,17 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
 
     def _handle_message(self, message: SseMessage) -> None:
         """Apply one event-stream message and fire the matching bus event."""
+        if message.truncated:
+            # Too big to keep: what it changed comes with a reload instead.
+            if message.id is not None:
+                self.last_event_id = message.id
+            self._note_sequence(message)
+            _LOGGER.warning(
+                "The %s event was too large to read; reloading everything",
+                message.event,
+            )
+            self._want_refresh()
+            return
         try:
             payload = json.loads(message.data) if message.data else {}
         except ValueError:

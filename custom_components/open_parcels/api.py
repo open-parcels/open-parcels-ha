@@ -56,6 +56,8 @@ class SseMessage:
     event: str
     data: str
     id: str | None
+    # A line of this message was over MAX_SSE_LINE_BYTES and dropped: its data is incomplete.
+    truncated: bool = False
 
 
 class SseParser:
@@ -66,6 +68,11 @@ class SseParser:
         self._event = ""
         self._data: list[str] = []
         self._id: str | None = None
+        self._truncated = False
+
+    def mark_dropped(self) -> None:
+        """A line of the current message was dropped; the message is incomplete."""
+        self._truncated = True
 
     def feed_line(self, line: str) -> SseMessage | None:
         """Consume one line (without its terminator); return a message when one ends."""
@@ -85,15 +92,19 @@ class SseParser:
         return None
 
     def _dispatch(self) -> SseMessage | None:
-        if not self._data and not self._event:
+        if not self._data and not self._event and not self._truncated:
             self._id = None
             return None
         message = SseMessage(
-            event=self._event or "message", data="\n".join(self._data), id=self._id
+            event=self._event or "message",
+            data="\n".join(self._data),
+            id=self._id,
+            truncated=self._truncated,
         )
         self._event = ""
         self._data = []
         self._id = None
+        self._truncated = False
         return message
 
 
@@ -292,6 +303,9 @@ class OpenParcelsClient:
                 # big" on a line over 128 KiB (a parcel with a long history), which killed the
                 # stream. A line over MAX_SSE_LINE_BYTES is dropped and the stream goes on.
                 async for line in _sse_lines(response.content):
+                    if line is None:
+                        parser.mark_dropped()
+                        continue
                     message = parser.feed_line(line)
                     if message is not None:
                         yield message
@@ -303,8 +317,11 @@ class OpenParcelsClient:
 MAX_SSE_LINE_BYTES = 8 * 1024 * 1024
 
 
-async def _sse_lines(content: aiohttp.StreamReader) -> AsyncIterator[str]:
-    """The stream's lines, without their line ending, split on LF (a CR before it is dropped)."""
+async def _sse_lines(content: aiohttp.StreamReader) -> AsyncIterator[str | None]:
+    """The stream's lines, without their line ending, split on LF (a CR before it is dropped).
+
+    None stands for a line dropped for its size.
+    """
     buffer = bytearray()
     skipping = False
     async for chunk in content.iter_any():
@@ -321,6 +338,8 @@ async def _sse_lines(content: aiohttp.StreamReader) -> AsyncIterator[str]:
                 "An event stream line exceeded %s bytes; dropped", MAX_SSE_LINE_BYTES
             )
             buffer.clear()
+            if not skipping:
+                yield None
             skipping = True
     if buffer and not skipping:
         yield bytes(buffer).decode("utf-8", errors="replace").rstrip("\r")

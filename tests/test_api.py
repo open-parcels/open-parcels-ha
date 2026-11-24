@@ -286,6 +286,11 @@ async def test_stream_drops_a_line_past_the_cap(
     client = OpenParcelsClient(_FakeSession(_FakeResponse(200, chunks)), BASE, TOKEN)  # type: ignore[arg-type]
     messages = [m async for m in client.async_stream_events(None, 90)]
     assert [m.id for m in messages if m.event == "y"] == ["2"]
+    # The cut message still arrives, marked, so its change can be reloaded (HA-032).
+    assert [(m.id, m.event, m.truncated) for m in messages] == [
+        ("1", "big", True),
+        ("2", "y", False),
+    ]
 
 
 async def test_non_json_answer_is_a_client_error(

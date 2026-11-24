@@ -15,7 +15,7 @@ from pytest_homeassistant_custom_component.common import (
     async_fire_time_changed,
 )
 
-from custom_components.open_parcels.api import OpenParcelsConnectionError
+from custom_components.open_parcels.api import OpenParcelsConnectionError, SseMessage
 from custom_components.open_parcels.const import DOMAIN
 from custom_components.open_parcels.coordinator import OpenParcelsCoordinator
 from custom_components.open_parcels.device import find_device
@@ -489,3 +489,25 @@ async def test_events_do_not_postpone_the_periodic_resync(
         )
         await hass.async_block_till_done()
     assert coordinator._unsub_refresh is scheduled
+
+
+async def test_truncated_message_reloads(
+    hass: HomeAssistant,
+    loaded: MockConfigEntry,
+    stream: FakeStream,
+    client: MagicMock,
+    freezer: FrozenDateTimeFactory,
+) -> None:
+    """A message cut for its size is not applied; a reload repairs it (HA-032)."""
+    coordinator = loaded.runtime_data.coordinator
+    await hass.async_block_till_done()
+    before = client.async_get_sources.await_count
+    stream.queue.put_nowait(
+        SseMessage(event="parcel.status_changed", data="", id="80", truncated=True)
+    )
+    await hass.async_block_till_done()
+    freezer.tick(timedelta(seconds=11))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    assert coordinator.last_event_id == "80"
+    assert client.async_get_sources.await_count == before + 1
