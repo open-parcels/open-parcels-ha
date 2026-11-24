@@ -2,8 +2,9 @@
 
 The position is the live courier's while a map session runs, else the latest
 carrier scan that had coordinates. Without either the tracker has no
-coordinates, and Home Assistant leaves it off the map. Positions are kept out
-of the recorder, so Home Assistant stores no trail of where a courier has been.
+coordinates, and Home Assistant leaves it off the map. Positions, and the zones
+Home Assistant derives from them, are kept out of the recorder, so Home Assistant
+stores no trail of where a courier has been.
 """
 
 from __future__ import annotations
@@ -61,6 +62,15 @@ class ParcelTracker(OpenParcelsEntity, TrackerEntity):
             "position_at",
             "position_source",
             "stops_away",
+            # Who sent it, where to fetch it and what it is called stay out of
+            # history; so does whether the courier was in a zone (HA-024).
+            "in_zones",
+            "sender",
+            "receiver",
+            "url",
+            "pickup_point",
+            "display_name",
+            "label",
         }
     )
 

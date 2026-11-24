@@ -102,6 +102,8 @@ class DeliveriesCalendar(OpenParcelsEntity, CalendarEntity):
     """The same entries as the server's calendar and ICS feed."""
 
     _attr_translation_key = "deliveries"
+    # Tracking codes, links and pickup points stay out of history (HA-024).
+    _unrecorded_attributes = frozenset({"description", "location"})
 
     def __init__(self, coordinator: OpenParcelsCoordinator) -> None:
         """Belongs to the hub."""

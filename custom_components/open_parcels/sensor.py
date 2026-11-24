@@ -140,7 +140,9 @@ class NextDeliverySensor(OpenParcelsEntity, SensorEntity):
 
     _attr_device_class = SensorDeviceClass.TIMESTAMP
     _attr_translation_key = "next_delivery"
-    _unrecorded_attributes = frozenset({"parcel", "by_carrier"})
+    _unrecorded_attributes = frozenset(
+        {"parcel", "by_carrier", "barcode", "sender", "receiver"}
+    )
 
     def __init__(
         self, coordinator: OpenParcelsCoordinator, source_id: str | None, key: str
@@ -301,7 +303,7 @@ class OrderSensor(OpenParcelsEntity, SensorEntity):
     _attr_device_class = SensorDeviceClass.ENUM
     _attr_translation_key = "order"
     _attr_options = ["in_progress", "partially_delivered"]
-    _unrecorded_attributes = frozenset({"items", "parcels"})
+    _unrecorded_attributes = frozenset({"items", "parcels", "shop", "order_number"})
 
     def __init__(self, coordinator: OpenParcelsCoordinator, key: str) -> None:
         """Place the order on its shop's device (the hub when unknown)."""

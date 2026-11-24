@@ -58,6 +58,17 @@ async def test_courier_position_then_none(
     assert {"latitude", "longitude", "gps_accuracy", "history"} <= set(
         entity._Entity__combined_unrecorded_attributes
     )
+    # Names, addresses and zone presence stay out of history too (HA-024).
+    assert {"in_zones", "sender", "receiver", "url", "display_name"} <= set(
+        entity._Entity__combined_unrecorded_attributes
+    )
+    for entity_id, keys in (
+        ("sensor.open_parcels_next_delivery", {"barcode", "sender", "receiver"}),
+        ("calendar.open_parcels_deliveries", {"description", "location"}),
+    ):
+        domain = entity_id.split(".")[0]
+        other = hass.data[domain].get_entity(entity_id)
+        assert keys <= set(other._Entity__combined_unrecorded_attributes)
 
     # Without the courier and without a placed scan, the tracker stays, off the map.
     stream.push(
