@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 from typing import Any
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from pytest_homeassistant_custom_component.typing import ClientSessionGenerator
 
+from custom_components.open_parcels import picture as picture_module
 from custom_components.open_parcels.api import OpenParcelsConnectionError
 from custom_components.open_parcels.const import CONF_ORDER_ENTITIES
 from custom_components.open_parcels.parcels import order_key
@@ -106,6 +107,15 @@ async def test_names_and_signed_pictures(
         side_effect=OpenParcelsConnectionError("down")
     )
     assert (await http.get(picture)).status == 502
+
+    # An address lives for its window and the next one, then expires (HA-019).
+    client.async_get_parcel_picture = AsyncMock(return_value=b"\x89PNG made up")
+    window = picture_module.current_window()
+    with patch.object(picture_module, "current_window", return_value=window + 1):
+        assert (await http.get(picture)).status == 200
+    with patch.object(picture_module, "current_window", return_value=window + 2):
+        assert (await http.get(picture)).status == 403
+    assert (await http.get(picture.replace("&w=", "&w=x"))).status == 403
 
 
 async def test_order_sensors_are_optional(
