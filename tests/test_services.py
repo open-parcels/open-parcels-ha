@@ -9,6 +9,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
+import voluptuous as vol
 
 from custom_components.open_parcels.api import (
     OpenParcelsApiError,
@@ -81,7 +82,21 @@ async def test_archive_errors(
         await hass.services.async_call(DOMAIN, "archive_parcel", {}, blocking=True)
     with pytest.raises(ServiceValidationError):
         await hass.services.async_call(
-            DOMAIN, "archive_parcel", {"parcel_id": "nope"}, blocking=True
+            DOMAIN,
+            "archive_parcel",
+            {"parcel_id": "99999999-0000-4000-8000-000000000000"},
+            blocking=True,
+        )
+    # Malformed input fails in the schema, before any request (HA-021).
+    for bad in ({"parcel_id": "nope"}, {"tracking_code": " x "}):
+        with pytest.raises(vol.Invalid):
+            await hass.services.async_call(DOMAIN, "archive_parcel", bad, blocking=True)
+    with pytest.raises(vol.Invalid):
+        await hass.services.async_call(
+            DOMAIN,
+            "track_parcel",
+            {"tracking_code": "TEST0000000009", "carrier": "x" * 65},
+            blocking=True,
         )
     client.async_archive_parcel.side_effect = OpenParcelsConnectionError("down")
     with pytest.raises(HomeAssistantError):
@@ -126,6 +141,16 @@ async def test_refresh(
         await hass.services.async_call(
             DOMAIN, "refresh", {"parcel_id": payloads.PARCEL_A}, blocking=True
         )
+
+    # A source backing off: the server's wait message, as on the button (HA-021).
+    client.async_sync_source.side_effect = OpenParcelsApiError(
+        429, "source_backing_off", "Try again in 5 minutes"
+    )
+    with pytest.raises(HomeAssistantError) as raised:
+        await hass.services.async_call(
+            DOMAIN, "refresh", {"parcel_id": payloads.PARCEL_A}, blocking=True
+        )
+    assert raised.value.translation_key == "sync_backing_off"
 
 
 async def test_entry_selection(
