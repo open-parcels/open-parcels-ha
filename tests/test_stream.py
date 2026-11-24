@@ -21,6 +21,7 @@ from custom_components.open_parcels.const import (
     STREAM_BACKOFF_INITIAL_SECONDS,
     STREAM_BACKOFF_MAX_SECONDS,
 )
+from custom_components.open_parcels.coordinator import OpenParcelsCoordinator
 
 from .conftest import FakeStream
 
@@ -192,14 +193,24 @@ async def test_first_connect_resyncs_once_open(
     stream: FakeStream,
     client: MagicMock,
 ) -> None:
-    """The first connection reloads over REST once open, closing the setup gap,
-    and continues from the seq the server's `ready` carries."""
+    """The first connection right after the setup's load does not load again
+    (HA-014), and continues from the seq the server's `ready` carries."""
     coordinator = loaded.runtime_data.coordinator
     stream.push("ready", json.dumps({"seq": 12}), "12")
     await _settle(hass)
-    # One load at setup, one after the stream opened.
-    assert client.async_get_parcels.await_count == 2
+    assert client.async_get_parcels.await_count == 1
     assert coordinator.last_event_id == "12"
+
+
+async def test_first_connect_after_a_stale_load_resyncs(
+    hass: HomeAssistant, entry: MockConfigEntry, client: MagicMock
+) -> None:
+    """A first connect long after the setup's load reloads to close the gap."""
+    with patch.object(OpenParcelsCoordinator, "loaded_within", return_value=False):
+        entry.add_to_hass(hass)
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await _settle(hass)
+    assert client.async_get_parcels.await_count == 2
 
 
 async def test_server_resync_reloads_and_resets_the_id(

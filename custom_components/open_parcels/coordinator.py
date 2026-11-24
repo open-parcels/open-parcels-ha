@@ -425,6 +425,13 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
         self.last_success_time = datetime.now(UTC)
         return data
 
+    def loaded_within(self, seconds: float) -> bool:
+        """Whether the last full REST load finished less than `seconds` ago."""
+        done = self.last_success_time
+        return done is not None and datetime.now(UTC) - done < timedelta(
+            seconds=seconds
+        )
+
     async def async_refresh_calendar(self) -> None:
         """Re-read the calendar entries the calendar entity shows as its state."""
         now = dt_util.utcnow()

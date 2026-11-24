@@ -26,6 +26,9 @@ _LOGGER = logging.getLogger(__name__)
 
 # A connection that lasted this long counts as healthy.
 STABLE_SECONDS = 60.0
+# The first connection skips its reload when the setup's own load finished this
+# recently: only events in these few seconds could be missed (HA-014).
+FRESH_LOAD_SECONDS = 5.0
 
 
 def next_backoff(current: float) -> float:
@@ -67,11 +70,13 @@ class _Attempt:
         health: _Health,
         *,
         resync: bool,
+        first: bool,
     ) -> None:
         self._hass = hass
         self._coordinator = coordinator
         self._health = health
         self._resync = resync
+        self._first = first
         self.opened_at: float | None = None
 
     def on_open(self) -> None:
@@ -85,7 +90,13 @@ class _Attempt:
         self.opened_at = self._hass.loop.time()
         self._health.opened()
         self._coordinator.async_set_stream_connected(True)
-        if self._resync:
+        if (
+            self._resync
+            and self._first
+            and self._coordinator.loaded_within(FRESH_LOAD_SECONDS)
+        ):
+            _LOGGER.debug("The setup's load is fresh; no reload on the first connect")
+        elif self._resync:
             # Directly, not through the debouncer: its cooldown would hold back the
             # next refresh someone asks for (a button, a service call).
             self._coordinator.async_start_refresh(debounced=False)
@@ -110,16 +121,21 @@ async def async_run_stream(
     re-fire events that happened while Home Assistant was not running. The
     server answers it with `ready` and the current sequence, which becomes the
     last id; a REST resync once the stream is open covers whatever changed
-    between the setup's first load and the connect. Reconnects send the last
+    between the setup's first load and the connect, unless that load finished
+    only seconds ago. Reconnects send the last
     id seen so nothing in between is lost; whenever none is known yet, the same
     resync after opening fills the gap. A `resync` message from the server
     (the id was too old, or the server's database was reset) also reloads.
     """
     delay = STREAM_BACKOFF_INITIAL_SECONDS
     health = _Health()
+    first = True
     while True:
         last_id = coordinator.last_event_id
-        attempt = _Attempt(hass, coordinator, health, resync=last_id is None)
+        attempt = _Attempt(
+            hass, coordinator, health, resync=last_id is None, first=first
+        )
+        first = False
         try:
             async for message in coordinator.client.async_stream_events(
                 last_id, STREAM_READ_TIMEOUT_SECONDS, attempt.on_open
