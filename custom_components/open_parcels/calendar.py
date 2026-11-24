@@ -16,7 +16,7 @@ from . import OpenParcelsConfigEntry
 from .api import OpenParcelsError
 from .const import DOMAIN
 from .coordinator import OpenParcelsCoordinator
-from .entity import OpenParcelsEntity, device_for_source
+from .entity import OpenParcelsEntity, device_for_connection
 from .parcels import parse_iso
 
 PARALLEL_UPDATES = 0
@@ -43,17 +43,21 @@ def _local_days(entry: Mapping[str, Any]) -> tuple[date, date] | None:
 
 def _summary_and_lines(entry: Mapping[str, Any]) -> tuple[str, list[str | None]]:
     """The event's title and description lines; returns list drop-off and cost."""
-    title = str(entry.get("title") or entry.get("barcode") or "Parcel")
+    title = str(entry.get("title") or entry.get("tracking_number") or "Parcel")
     status = f"Status: {entry['status']}" if entry.get("status") else None
     if entry.get("kind") == "return_by":
-        # A return's `barcode` is its order number; `details` its drop-off and cost.
+        # A return's `tracking_number` is its order number; `details` its drop-off and cost.
         details = [str(line) for line in entry.get("details") or [] if line]
-        order = f"Order: {entry['barcode']}" if entry.get("barcode") else None
+        order = (
+            f"Order: {entry['tracking_number']}"
+            if entry.get("tracking_number")
+            else None
+        )
         label = f"Label: {entry['url']}" if entry.get("url") else None
         return f"Return by: {title}", [order, *details, status, label]
     summary = f"Delivered: {title}" if entry.get("kind") == "delivered" else title
     carrier_code = " ".join(
-        str(entry[k]) for k in ("carrier", "barcode") if entry.get(k)
+        str(entry[k]) for k in ("carrier", "tracking_number") if entry.get(k)
     )
     return summary, [carrier_code, status, entry.get("url")]
 
@@ -73,7 +77,7 @@ def to_calendar_event(entry: Mapping[str, Any]) -> CalendarEvent | None:
         # The server's own local days, so Home Assistant's time zone cannot shift them.
         event_start, event_end = days
     elif entry.get("all_day"):
-        # Older servers send instants only. Their whole-day windows end at midnight
+        # No usable local days: the instants' whole-day window ends at midnight
         # (exclusive) or at the last second of the day (inclusive); both become an
         # exclusive end date.
         event_start = dt_util.as_local(start).date()
@@ -108,7 +112,7 @@ class DeliveriesCalendar(OpenParcelsEntity, CalendarEntity):
     def __init__(self, coordinator: OpenParcelsCoordinator) -> None:
         """Belongs to the hub."""
         super().__init__(coordinator, "deliveries")
-        self._attr_device_info = device_for_source(coordinator.config_entry, None)
+        self._attr_device_info = device_for_connection(coordinator.config_entry, None)
 
     @property
     def event(self) -> CalendarEvent | None:

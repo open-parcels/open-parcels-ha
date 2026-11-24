@@ -1,4 +1,4 @@
-"""Sensors: hub summaries, per-source summaries and diagnostics.
+"""Sensors: hub summaries, per-connection summaries and diagnostics.
 
 Parcels themselves are device trackers (device_tracker.py); delivered ones only
 appear here, in the list sensors' attributes.
@@ -20,14 +20,14 @@ from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import OpenParcelsConfigEntry
-from .const import NOT_RUN_YET_DETAIL, SourceState
+from .const import ConnectionState
 from .coordinator import OpenParcelsCoordinator
 from .entity import (
+    OpenParcelsConnectionEntity,
     OpenParcelsEntity,
-    OpenParcelsSourceEntity,
     async_add_dynamic,
-    device_for_source,
-    source_ids,
+    connection_ids,
+    device_for_connection,
 )
 from .parcels import count_by_carrier, next_delivery, parse_iso
 from .returns import return_summary
@@ -37,22 +37,22 @@ PARALLEL_UPDATES = 0
 
 # Hub list sensors use the aggregator's keys.
 HUB_LIST_KEYS = (
-    "incoming",
-    "outgoing",
+    "receiving",
+    "sending",
     "delivered",
-    "outgoing_delivered",
+    "sending_delivered",
     "en_route_to_pickup_point",
     "awaiting_pickup",
 )
 
-# Source list sensors use the per-carrier keys -> the bucket they show.
-SOURCE_LIST_KEYS = {
-    "incoming_parcels": "incoming",
+# Connection list sensors use the per-carrier keys -> the bucket they show.
+CONNECTION_LIST_KEYS = {
+    "receiving_parcels": "receiving",
     "en_route_to_pickup_point": "en_route_to_pickup_point",
     "awaiting_pickup": "awaiting_pickup",
     "delivered_parcels": "delivered",
-    "outgoing_parcels": "outgoing",
-    "outgoing_delivered_parcels": "outgoing_delivered",
+    "sending_parcels": "sending",
+    "sending_delivered_parcels": "sending_delivered",
 }
 
 
@@ -61,7 +61,7 @@ async def async_setup_entry(
     entry: OpenParcelsConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    """Set up the sensors and keep adding them as sources and parcels appear."""
+    """Set up the sensors and keep adding them as connections and parcels appear."""
     coordinator = entry.runtime_data.coordinator
 
     hub: list[SensorEntity] = [
@@ -72,22 +72,22 @@ async def async_setup_entry(
     hub.append(LastUpdateSensor(coordinator))
     async_add_entities(hub)
 
-    def _source_entities(source_id: str) -> list[Entity]:
+    def _connection_entities(connection_id: str) -> list[Entity]:
         entities: list[Entity] = [
-            ListSensor(coordinator, bucket, source_id, key)
-            for key, bucket in SOURCE_LIST_KEYS.items()
+            ListSensor(coordinator, bucket, connection_id, key)
+            for key, bucket in CONNECTION_LIST_KEYS.items()
         ]
-        entities.append(NextDeliverySensor(coordinator, source_id, "next_delivery"))
-        entities.append(SourceLastOkSensor(coordinator, source_id))
-        entities.append(SourceStateSensor(coordinator, source_id))
+        entities.append(NextDeliverySensor(coordinator, connection_id, "next_delivery"))
+        entities.append(ConnectionLastOkSensor(coordinator, connection_id))
+        entities.append(ConnectionStateSensor(coordinator, connection_id))
         return entities
 
     async_add_dynamic(
         coordinator,
         entry,
         async_add_entities,
-        lambda: source_ids(coordinator),
-        _source_entities,
+        lambda: connection_ids(coordinator),
+        _connection_entities,
     )
     async_add_dynamic(
         coordinator,
@@ -98,8 +98,8 @@ async def async_setup_entry(
     )
 
 
-def _suffix(source_id: str | None, key: str) -> str:
-    return key if source_id is None else f"source_{source_id}_{key}"
+def _suffix(connection_id: str | None, key: str) -> str:
+    return key if connection_id is None else f"connection_{connection_id}_{key}"
 
 
 class ListSensor(OpenParcelsEntity, SensorEntity):
@@ -112,18 +112,20 @@ class ListSensor(OpenParcelsEntity, SensorEntity):
         self,
         coordinator: OpenParcelsCoordinator,
         bucket: str,
-        source_id: str | None,
+        connection_id: str | None,
         key: str,
     ) -> None:
-        """Show ``bucket`` for the hub (source_id None) or one source."""
-        super().__init__(coordinator, _suffix(source_id, key))
+        """Show ``bucket`` for the hub (connection_id None) or one connection."""
+        super().__init__(coordinator, _suffix(connection_id, key))
         self._bucket = bucket
-        self._source_id = source_id
+        self._connection_id = connection_id
         self._attr_translation_key = key
-        self._attr_device_info = device_for_source(coordinator.config_entry, source_id)
+        self._attr_device_info = device_for_connection(
+            coordinator.config_entry, connection_id
+        )
 
     def _parcels(self) -> list[dict[str, Any]]:
-        return self.coordinator.buckets(self._source_id)[self._bucket]
+        return self.coordinator.buckets(self._connection_id)[self._bucket]
 
     @property
     def native_value(self) -> int:
@@ -142,38 +144,40 @@ class ListSensor(OpenParcelsEntity, SensorEntity):
 
 
 class NextDeliverySensor(OpenParcelsEntity, SensorEntity):
-    """Earliest expected delivery among the active incoming parcels."""
+    """Earliest expected delivery among the active receiving parcels."""
 
     _attr_device_class = SensorDeviceClass.TIMESTAMP
     _attr_translation_key = "next_delivery"
     _unrecorded_attributes = frozenset(
-        {"parcel", "by_carrier", "barcode", "sender", "receiver"}
+        {"parcel", "by_carrier", "tracking_number", "sender", "receiver"}
     )
 
     def __init__(
-        self, coordinator: OpenParcelsCoordinator, source_id: str | None, key: str
+        self, coordinator: OpenParcelsCoordinator, connection_id: str | None, key: str
     ) -> None:
-        """Show the hub's (source_id None) or one source's next delivery."""
-        super().__init__(coordinator, _suffix(source_id, key))
-        self._source_id = source_id
-        self._attr_device_info = device_for_source(coordinator.config_entry, source_id)
+        """Show the hub's (connection_id None) or one connection's next delivery."""
+        super().__init__(coordinator, _suffix(connection_id, key))
+        self._connection_id = connection_id
+        self._attr_device_info = device_for_connection(
+            coordinator.config_entry, connection_id
+        )
 
     def _compute(
         self,
     ) -> tuple[datetime | None, dict[str, Any] | None, dict[str, datetime]]:
-        return next_delivery(self.coordinator.buckets(self._source_id)["incoming"])
+        return next_delivery(self.coordinator.buckets(self._connection_id)["receiving"])
 
     @property
     def native_value(self) -> datetime | None:
-        """The earliest planned_from."""
+        """The earliest expected_from."""
         return self._compute()[0]
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """The aggregator's attributes plus the carriers' barcode/sender/receiver."""
+        """The aggregator's attributes plus the carriers' tracking_number/sender/receiver."""
         _, parcel, by_carrier = self._compute()
         return {
-            "barcode": parcel.get("barcode") if parcel else None,
+            "tracking_number": parcel.get("tracking_number") if parcel else None,
             "sender": parcel.get("sender") if parcel else None,
             "receiver": parcel.get("receiver") if parcel else None,
             "by_carrier": {label: dt.isoformat() for label, dt in by_carrier.items()},
@@ -191,7 +195,7 @@ class OpenReturnsSensor(OpenParcelsEntity, SensorEntity):
     def __init__(self, coordinator: OpenParcelsCoordinator) -> None:
         """Belongs to the hub."""
         super().__init__(coordinator, "open_returns")
-        self._attr_device_info = device_for_source(coordinator.config_entry, None)
+        self._attr_device_info = device_for_connection(coordinator.config_entry, None)
 
     @property
     def native_value(self) -> int:
@@ -216,7 +220,7 @@ class LastUpdateSensor(OpenParcelsEntity, SensorEntity):
     def __init__(self, coordinator: OpenParcelsCoordinator) -> None:
         """Belongs to the hub."""
         super().__init__(coordinator, "last_update")
-        self._attr_device_info = device_for_source(coordinator.config_entry, None)
+        self._attr_device_info = device_for_connection(coordinator.config_entry, None)
 
     @property
     def native_value(self) -> datetime | None:
@@ -224,63 +228,56 @@ class LastUpdateSensor(OpenParcelsEntity, SensorEntity):
         return self.coordinator.last_success_time
 
 
-class SourceLastOkSensor(OpenParcelsSourceEntity, SensorEntity):
-    """When the source last ran without an error."""
+class ConnectionLastOkSensor(OpenParcelsConnectionEntity, SensorEntity):
+    """When the connection last ran without an error."""
 
     _attr_device_class = SensorDeviceClass.TIMESTAMP
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_translation_key = "last_update"
 
-    def __init__(self, coordinator: OpenParcelsCoordinator, source_id: str) -> None:
-        """Belongs to the source's device."""
-        super().__init__(coordinator, source_id, "last_update")
+    def __init__(self, coordinator: OpenParcelsCoordinator, connection_id: str) -> None:
+        """Belongs to the connection's device."""
+        super().__init__(coordinator, connection_id, "last_update")
 
     @property
     def native_value(self) -> datetime | None:
-        """The source's last_ok_at."""
-        return parse_iso(self._source.get("last_ok_at"))
+        """The connection's last_ok_at."""
+        return parse_iso(self._connection.get("last_ok_at"))
 
 
-class SourceStateSensor(OpenParcelsSourceEntity, SensorEntity):
-    """The source's state: ok, needs sign-in, error or disabled."""
+class ConnectionStateSensor(OpenParcelsConnectionEntity, SensorEntity):
+    """The connection's state: ok, needs sign-in, error or disabled."""
 
     _attr_device_class = SensorDeviceClass.ENUM
     _attr_entity_category = EntityCategory.DIAGNOSTIC
-    _attr_translation_key = "source_state"
-    _attr_options = [state.value for state in SourceState]
+    _attr_translation_key = "connection_state"
+    _attr_options = [state.value for state in ConnectionState]
 
-    def __init__(self, coordinator: OpenParcelsCoordinator, source_id: str) -> None:
-        """Belongs to the source's device."""
-        super().__init__(coordinator, source_id, "source_state")
+    def __init__(self, coordinator: OpenParcelsCoordinator, connection_id: str) -> None:
+        """Belongs to the connection's device."""
+        super().__init__(coordinator, connection_id, "connection_state")
 
     @property
     def native_value(self) -> str | None:
         """The state, or None for a value this version does not know.
 
-        The server reports "idle" for a source that ran but had nothing it could
-        do (DPD with public tracking off). Older servers report that as "ok" with
-        a detail other than "not run yet"; that still reads as "idle".
+        "idle" is a connection that ran but had nothing it could do (DPD with
+        public tracking off); the detail says why.
         """
-        state = self._source.get("state")
-        detail = self._source.get("state_detail")
-        legacy_idle = (
-            state == SourceState.OK and detail and detail != NOT_RUN_YET_DETAIL
-        )
-        if legacy_idle:
-            return SourceState.IDLE.value
+        state = self._connection.get("state")
         return state if state in self._attr_options else None
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Detail and run times as the server reports them."""
-        source = self._source
+        connection = self._connection
         return {
-            "detail": source.get("state_detail"),
-            "plugin": source.get("plugin"),
-            "kind": source.get("kind"),
-            "last_run_at": source.get("last_run_at"),
-            "next_run_at": source.get("next_run_at"),
-            "last_ok_at": source.get("last_ok_at"),
+            "detail": connection.get("state_detail"),
+            "provider": connection.get("provider"),
+            "kind": connection.get("kind"),
+            "last_run_at": connection.get("last_run_at"),
+            "next_run_at": connection.get("next_run_at"),
+            "last_ok_at": connection.get("last_ok_at"),
         }
 
 
@@ -301,8 +298,8 @@ class OrderSensor(OpenParcelsEntity, SensorEntity):
             "shop": str(order.get("shop") or ""),
             "number": str(order.get("order_number") or key),
         }
-        self._attr_device_info = device_for_source(
-            coordinator.config_entry, order.get("source_id")
+        self._attr_device_info = device_for_connection(
+            coordinator.config_entry, order.get("connection_id")
         )
 
     @property
@@ -328,7 +325,7 @@ class OrderSensor(OpenParcelsEntity, SensorEntity):
         """Shop, number, counts, items (with their parcel's code) and parcels."""
         order = self._order or {}
         parcels = order.get("parcels") or []
-        codes = {parcel["id"]: parcel["barcode"] for parcel in parcels}
+        codes = {parcel["id"]: parcel["tracking_number"] for parcel in parcels}
         return {
             "shop": order.get("shop"),
             "order_number": order.get("order_number"),

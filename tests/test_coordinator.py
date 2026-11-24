@@ -57,7 +57,7 @@ async def test_status_change_fires_event_and_updates(
     )
     assert len(fired) == 1
     data = fired[0].data
-    assert data["barcode"] == "TEST0000000002"
+    assert data["tracking_number"] == "TEST0000000002"
     assert data["old_status"] == "at_pickup_point"
     assert data["new_status"] == "returning"
     # Bulky and personal parts stay off the bus and out of the recorder (HA-025).
@@ -65,7 +65,7 @@ async def test_status_change_fires_event_and_updates(
     gls = find_device(
         hass,
         loaded.entry_id,
-        (DOMAIN, f"{loaded.entry_id}_source_{payloads.SOURCE_GLS}"),
+        (DOMAIN, f"{loaded.entry_id}_connection_{payloads.CONNECTION_GLS}"),
     )
     hub = find_device(hass, loaded.entry_id, (DOMAIN, loaded.entry_id))
     assert data["device_id"] == gls.id
@@ -81,7 +81,7 @@ async def test_new_parcel_adds_entity(
     parcel = _parcel(
         1,
         id="eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
-        barcode="TEST0000000005",
+        tracking_number="TEST0000000005",
         status="registered",
         pickup=False,
     )
@@ -91,7 +91,7 @@ async def test_new_parcel_adds_entity(
         hass.states.get("device_tracker.gls_99999_parcel_test0000000005").state
         == "registered"
     )
-    assert hass.states.get("sensor.open_parcels_incoming_parcels").state == "3"
+    assert hass.states.get("sensor.open_parcels_receiving_parcels").state == "3"
     assert len(fired) == 1
 
 
@@ -113,17 +113,19 @@ async def test_removed_parcel_drops_entity(
     assert len(fired) == 1
 
 
-async def test_removal_without_sources_goes_to_the_source_device(
+async def test_removal_without_connections_goes_to_the_connection_device(
     hass: HomeAssistant, loaded: MockConfigEntry, stream: FakeStream
 ) -> None:
-    """A removal whose payload names no source still fires on the owning source's device."""
+    """A removal whose payload names no connection still fires on the owning connection's device."""
     fired = events(hass, f"{DOMAIN}_parcel_removed")
-    stream.push("parcel.removed", json.dumps({"parcel": _parcel(1, sources=[])}), "44")
+    stream.push(
+        "parcel.removed", json.dumps({"parcel": _parcel(1, connections=[])}), "44"
+    )
     await hass.async_block_till_done()
     gls = find_device(
         hass,
         loaded.entry_id,
-        (DOMAIN, f"{loaded.entry_id}_source_{payloads.SOURCE_GLS}"),
+        (DOMAIN, f"{loaded.entry_id}_connection_{payloads.CONNECTION_GLS}"),
     )
     hub = find_device(hass, loaded.entry_id, (DOMAIN, loaded.entry_id))
     assert len(fired) == 1
@@ -131,15 +133,15 @@ async def test_removal_without_sources_goes_to_the_source_device(
     assert fired[0].data["device_id"] != hub.id
 
 
-async def test_delivered_and_delivery_time_and_outgoing_events(
+async def test_delivered_and_delivery_time_and_sending_events(
     hass: HomeAssistant, loaded: MockConfigEntry, stream: FakeStream
 ) -> None:
     """Every server event maps to its suite-style bus event."""
     names = [
         "parcel_delivered",
         "parcel_delivery_time_changed",
-        "outgoing_parcel_registered",
-        "outgoing_parcel_delivered",
+        "sending_parcel_registered",
+        "sending_parcel_delivered",
         "parcel_live_updated",
     ]
     fired = {name: events(hass, f"{DOMAIN}_{name}") for name in names}
@@ -155,16 +157,16 @@ async def test_delivered_and_delivery_time_and_outgoing_events(
         "parcel.delivery_time_changed",
         json.dumps(
             {
-                "parcel": _parcel(1, planned_from="2030-01-05T10:00:00Z"),
-                "old_planned_from": None,
-                "new_planned_from": "2030-01-05T10:00:00Z",
+                "parcel": _parcel(1, expected_from="2030-01-05T10:00:00Z"),
+                "old_expected_from": None,
+                "new_expected_from": "2030-01-05T10:00:00Z",
             }
         ),
         "51",
     )
-    stream.push("parcel.outgoing_registered", json.dumps({"parcel": _parcel(3)}), "52")
+    stream.push("parcel.sending_registered", json.dumps({"parcel": _parcel(3)}), "52")
     stream.push(
-        "parcel.outgoing_delivered",
+        "parcel.sending_delivered",
         json.dumps({"parcel": _parcel(3, status="delivered", delivered=True)}),
         "53",
     )
@@ -176,7 +178,7 @@ async def test_delivered_and_delivery_time_and_outgoing_events(
     await hass.async_block_till_done()
     for name in names:
         assert len(fired[name]) == 1, name
-    assert fired["parcel_delivery_time_changed"][0].data["new_planned_from"] == (
+    assert fired["parcel_delivery_time_changed"][0].data["new_expected_from"] == (
         "2030-01-05T10:00:00Z"
     )
     assert hass.states.get("sensor.open_parcels_delivered_parcels").state == "2"
@@ -187,16 +189,20 @@ async def test_delivered_and_delivery_time_and_outgoing_events(
     )
 
 
-async def test_source_state_change(
+async def test_connection_state_change(
     hass: HomeAssistant, loaded: MockConfigEntry, stream: FakeStream
 ) -> None:
-    """source.state_changed updates the source and fires an event."""
-    fired = events(hass, f"{DOMAIN}_source_state_changed")
+    """connection.state_changed updates the connection and fires an event."""
+    fired = events(hass, f"{DOMAIN}_connection_state_changed")
     stream.push(
-        "source.state_changed",
+        "connection.state_changed",
         json.dumps(
             {
-                "source": {"id": payloads.SOURCE_DHL, "plugin": "dhl", "label": "x"},
+                "connection": {
+                    "id": payloads.CONNECTION_DHL,
+                    "provider": "dhl",
+                    "label": "x",
+                },
                 "old_state": "ok",
                 "new_state": "error",
                 "detail": "Carrier unreachable",
@@ -205,20 +211,24 @@ async def test_source_state_change(
         "60",
     )
     await hass.async_block_till_done()
-    assert hass.states.get("sensor.dhl_germany_abc123_source_state").state == "error"
+    assert (
+        hass.states.get("sensor.dhl_germany_abc123_connection_state").state == "error"
+    )
     assert hass.states.get("binary_sensor.dhl_germany_abc123_problem").state == "on"
     assert fired[0].data["new_state"] == "error"
     assert fired[0].data["device_id"] is not None
 
 
-async def test_unknown_source_or_parcel_source_triggers_resync(
+async def test_unknown_connection_or_parcel_connection_triggers_resync(
     hass: HomeAssistant, loaded: MockConfigEntry, stream: FakeStream, client: MagicMock
 ) -> None:
-    """Events naming a source this entry has not seen cause a resync."""
-    before = client.async_get_sources.await_count
+    """Events naming a connection this entry has not seen cause a resync."""
+    before = client.async_get_connections.await_count
     stream.push(
-        "source.state_changed",
-        json.dumps({"source": {"id": "new"}, "old_state": "ok", "new_state": "error"}),
+        "connection.state_changed",
+        json.dumps(
+            {"connection": {"id": "new"}, "old_state": "ok", "new_state": "error"}
+        ),
     )
     stream.push(
         "parcel.registered",
@@ -227,10 +237,10 @@ async def test_unknown_source_or_parcel_source_triggers_resync(
                 "parcel": _parcel(
                     1,
                     id="ffffffff-ffff-4fff-8fff-ffffffffffff",
-                    sources=[
+                    connections=[
                         {
-                            "source_id": "unknown-source",
-                            "plugin": "gls",
+                            "connection_id": "unknown-connection",
+                            "provider": "gls",
                             "role": "primary",
                             "last_seen_at": "2030-01-01T00:00:00Z",
                         }
@@ -240,7 +250,7 @@ async def test_unknown_source_or_parcel_source_triggers_resync(
         ),
     )
     await hass.async_block_till_done()
-    assert client.async_get_sources.await_count > before
+    assert client.async_get_connections.await_count > before
 
 
 async def test_ignored_messages(
@@ -255,7 +265,7 @@ async def test_ignored_messages(
     stream.push("parcel.live_position", json.dumps({"parcel_id": 5}))
     await hass.async_block_till_done()
     assert coordinator.last_event_id == "70"
-    assert hass.states.get("sensor.open_parcels_incoming_parcels").state == "2"
+    assert hass.states.get("sensor.open_parcels_receiving_parcels").state == "2"
 
 
 async def test_history_kept_when_event_lacks_it(
@@ -279,7 +289,7 @@ async def test_resync_failure_keeps_entities(
     await coordinator.async_refresh()
     await hass.async_block_till_done()
     assert (
-        hass.states.get("sensor.open_parcels_incoming_parcels").state == "unavailable"
+        hass.states.get("sensor.open_parcels_receiving_parcels").state == "unavailable"
     )
     # The event stream sensor reports the stream, not the resync.
     assert hass.states.get("binary_sensor.open_parcels_event_stream").state == "on"
@@ -313,27 +323,31 @@ async def test_deleted_parcel_drops_entity_and_counts(
 ) -> None:
     """parcel.deleted takes the parcel away at once, no refresh button needed."""
     fired = events(hass, f"{DOMAIN}_parcel_deleted")
-    assert hass.states.get("sensor.open_parcels_incoming_parcels").state == "2"
+    assert hass.states.get("sensor.open_parcels_receiving_parcels").state == "2"
     stream.push("parcel.deleted", json.dumps({"parcel": _parcel(1)}), "90")
     await hass.async_block_till_done()
     assert hass.states.get("device_tracker.gls_99999_parcel_test0000000002") is None
-    assert hass.states.get("sensor.open_parcels_incoming_parcels").state == "1"
+    assert hass.states.get("sensor.open_parcels_receiving_parcels").state == "1"
     assert len(fired) == 1
 
 
-async def test_removed_source_drops_device_and_rehomes_its_parcels(
+async def test_removed_connection_drops_device_and_rehomes_its_parcels(
     hass: HomeAssistant, loaded: MockConfigEntry, stream: FakeStream
 ) -> None:
-    """source.removed removes the device; its parcels move to the hub."""
-    fired = events(hass, f"{DOMAIN}_source_removed")
-    dhl_identifier = (DOMAIN, f"{loaded.entry_id}_source_{payloads.SOURCE_DHL}")
+    """connection.removed removes the device; its parcels move to the hub."""
+    fired = events(hass, f"{DOMAIN}_connection_removed")
+    dhl_identifier = (DOMAIN, f"{loaded.entry_id}_connection_{payloads.CONNECTION_DHL}")
     dhl = find_device(hass, loaded.entry_id, dhl_identifier)
     assert dhl is not None
     stream.push(
-        "source.removed",
+        "connection.removed",
         json.dumps(
             {
-                "source": {"id": payloads.SOURCE_DHL, "plugin": "dhl", "label": "x"},
+                "connection": {
+                    "id": payloads.CONNECTION_DHL,
+                    "provider": "dhl",
+                    "label": "x",
+                },
                 "merged_into": None,
             }
         ),
@@ -357,42 +371,45 @@ async def test_resync_removes_what_the_server_no_longer_has(
     client: MagicMock,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """A periodic resync drops vanished sources (device) and parcels (entity).
+    """A periodic resync drops vanished connections (device) and parcels (entity).
 
     The device is removed through the supported API: no deprecation report.
     """
-    client.async_get_sources.side_effect = lambda: [
-        dict(s) for s in payloads.SOURCES if s["id"] != payloads.SOURCE_GLS
+    client.async_get_connections.side_effect = lambda: [
+        dict(s) for s in payloads.CONNECTIONS if s["id"] != payloads.CONNECTION_GLS
     ]
     client.async_get_parcels.side_effect = lambda **_: [
         p for p in payloads.parcels() if p["id"] != payloads.PARCEL_B
     ]
     await loaded.runtime_data.coordinator.async_refresh()
     await hass.async_block_till_done()
-    gls_identifier = (DOMAIN, f"{loaded.entry_id}_source_{payloads.SOURCE_GLS}")
+    gls_identifier = (DOMAIN, f"{loaded.entry_id}_connection_{payloads.CONNECTION_GLS}")
     assert find_device(hass, loaded.entry_id, gls_identifier) is None
     assert dr.async_get(hass).async_get_device(identifiers={gls_identifier}) is None
     assert "remove_config_entry_id" not in caplog.text
     assert hass.states.get("device_tracker.gls_99999_parcel_test0000000002") is None
-    assert hass.states.get("sensor.open_parcels_incoming_parcels").state == "1"
+    assert hass.states.get("sensor.open_parcels_receiving_parcels").state == "1"
 
 
-async def test_source_removed_without_data_or_id_is_ignored(
+async def test_connection_removed_without_data_or_id_is_ignored(
     hass: HomeAssistant, loaded: MockConfigEntry, stream: FakeStream, client: MagicMock
 ) -> None:
-    """A malformed removal changes nothing; a merge into an unseen source resyncs."""
-    before = client.async_get_sources.await_count
-    stream.push("source.removed", json.dumps({"source": "nope"}))
+    """A malformed removal changes nothing; a merge into an unseen connection resyncs."""
+    before = client.async_get_connections.await_count
+    stream.push("connection.removed", json.dumps({"connection": "nope"}))
     await hass.async_block_till_done()
-    assert client.async_get_sources.await_count == before
+    assert client.async_get_connections.await_count == before
     stream.push(
-        "source.removed",
+        "connection.removed",
         json.dumps(
-            {"source": {"id": payloads.SOURCE_GLS}, "merged_into": "unseen-source"}
+            {
+                "connection": {"id": payloads.CONNECTION_GLS},
+                "merged_into": "unseen-connection",
+            }
         ),
     )
     await hass.async_block_till_done()
-    assert client.async_get_sources.await_count > before
+    assert client.async_get_connections.await_count > before
 
 
 def test_carrier_status_comes_from_the_server() -> None:
@@ -456,18 +473,20 @@ async def test_refresh_asked_during_cooldown_survives_the_event(
     # A service call refreshes first: the debouncer's cooldown starts.
     await coordinator.async_request_refresh()
     await hass.async_block_till_done()
-    before = client.async_get_sources.await_count
-    # Within the cooldown, an event names a source this entry has not seen.
+    before = client.async_get_connections.await_count
+    # Within the cooldown, an event names a connection this entry has not seen.
     stream.push(
-        "source.state_changed",
-        json.dumps({"source": {"id": "new"}, "old_state": "ok", "new_state": "error"}),
+        "connection.state_changed",
+        json.dumps(
+            {"connection": {"id": "new"}, "old_state": "ok", "new_state": "error"}
+        ),
         "61",
     )
     await hass.async_block_till_done()
     freezer.tick(timedelta(seconds=11))
     async_fire_time_changed(hass)
     await hass.async_block_till_done()
-    assert client.async_get_sources.await_count == before + 1
+    assert client.async_get_connections.await_count == before + 1
 
 
 async def test_events_do_not_postpone_the_periodic_resync(
@@ -502,7 +521,7 @@ async def test_truncated_message_reloads(
     """A message cut for its size is not applied; a reload repairs it (HA-032)."""
     coordinator = loaded.runtime_data.coordinator
     await hass.async_block_till_done()
-    before = client.async_get_sources.await_count
+    before = client.async_get_connections.await_count
     stream.queue.put_nowait(
         SseMessage(event="parcel.status_changed", data="", id="80", truncated=True)
     )
@@ -511,7 +530,7 @@ async def test_truncated_message_reloads(
     async_fire_time_changed(hass)
     await hass.async_block_till_done()
     assert coordinator.last_event_id == "80"
-    assert client.async_get_sources.await_count == before + 1
+    assert client.async_get_connections.await_count == before + 1
 
 
 async def test_views_are_cached_until_the_data_changes(

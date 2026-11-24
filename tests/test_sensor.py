@@ -1,4 +1,4 @@
-"""Sensors: hub summaries, source summaries and diagnostics, parcels."""
+"""Sensors: hub summaries, connection summaries and diagnostics, parcels."""
 
 from __future__ import annotations
 
@@ -9,15 +9,15 @@ from . import payloads
 
 SUITE_KEYS = [
     "carrier",
-    "barcode",
+    "tracking_number",
     "sender",
     "receiver",
     "status",
     "raw_status",
     "delivered",
     "delivered_at",
-    "planned_from",
-    "planned_to",
+    "expected_from",
+    "expected_to",
     "pickup",
     "pickup_point",
     "url",
@@ -30,29 +30,27 @@ SUITE_KEYS = [
 
 async def test_hub_summaries(hass: HomeAssistant, loaded: MockConfigEntry) -> None:
     """The aggregator's sensors, with their attributes."""
-    incoming = hass.states.get("sensor.open_parcels_incoming_parcels")
-    assert incoming is not None
-    assert incoming.state == "2"
-    assert incoming.attributes["by_carrier"] == {"DHL": 1, "GLS": 1}
-    assert [p["barcode"] for p in incoming.attributes["parcels"]] == [
+    receiving = hass.states.get("sensor.open_parcels_receiving_parcels")
+    assert receiving is not None
+    assert receiving.state == "2"
+    assert receiving.attributes["by_carrier"] == {"DHL": 1, "GLS": 1}
+    assert [p["tracking_number"] for p in receiving.attributes["parcels"]] == [
         "TEST0000000001",
         "TEST0000000002",
     ]
-    assert hass.states.get("sensor.open_parcels_outgoing_parcels").state == "1"
+    assert hass.states.get("sensor.open_parcels_sending_parcels").state == "1"
     assert hass.states.get("sensor.open_parcels_delivered_parcels").state == "1"
-    assert (
-        hass.states.get("sensor.open_parcels_outgoing_delivered_parcels").state == "0"
-    )
+    assert hass.states.get("sensor.open_parcels_sending_delivered_parcels").state == "0"
     assert hass.states.get("sensor.open_parcels_awaiting_pickup").state == "1"
     assert hass.states.get("sensor.open_parcels_en_route_to_pickup_point").state == "0"
 
     next_delivery = hass.states.get("sensor.open_parcels_next_delivery")
     assert next_delivery.state == "2030-01-02T12:00:00+00:00"
-    assert next_delivery.attributes["barcode"] == "TEST0000000001"
+    assert next_delivery.attributes["tracking_number"] == "TEST0000000001"
     assert next_delivery.attributes["by_carrier"] == {
         "DHL": "2030-01-02T12:00:00+00:00"
     }
-    assert next_delivery.attributes["parcel"]["barcode"] == "TEST0000000001"
+    assert next_delivery.attributes["parcel"]["tracking_number"] == "TEST0000000001"
 
     assert hass.states.get("sensor.open_parcels_last_successful_update").state not in (
         "unknown",
@@ -60,23 +58,23 @@ async def test_hub_summaries(hass: HomeAssistant, loaded: MockConfigEntry) -> No
     )
 
 
-async def test_source_sensors(hass: HomeAssistant, loaded: MockConfigEntry) -> None:
-    """Each source shows its own lists and its state."""
-    assert hass.states.get("sensor.dhl_germany_abc123_incoming_parcels").state == "1"
+async def test_connection_sensors(hass: HomeAssistant, loaded: MockConfigEntry) -> None:
+    """Each connection shows its own lists and its state."""
+    assert hass.states.get("sensor.dhl_germany_abc123_receiving_parcels").state == "1"
     assert hass.states.get("sensor.dhl_germany_abc123_delivered_parcels").state == "1"
     assert hass.states.get("sensor.gls_99999_awaiting_pickup").state == "1"
     assert hass.states.get("sensor.gls_99999_next_delivery").state == "unknown"
     assert hass.states.get("sensor.gls_99999_en_route_to_pickup_point").state == "0"
-    assert hass.states.get("sensor.dhl_germany_abc123_outgoing_parcels").state == "0"
+    assert hass.states.get("sensor.dhl_germany_abc123_sending_parcels").state == "0"
     assert (
-        hass.states.get("sensor.dhl_germany_abc123_outgoing_delivered_parcels").state
+        hass.states.get("sensor.dhl_germany_abc123_sending_delivered_parcels").state
         == "0"
     )
 
-    state = hass.states.get("sensor.gls_99999_source_state")
+    state = hass.states.get("sensor.gls_99999_connection_state")
     assert state.state == "needs_sign_in"
     assert state.attributes["detail"] == "Sign in again"
-    assert state.attributes["plugin"] == "gls"
+    assert state.attributes["provider"] == "gls"
     assert (
         hass.states.get("sensor.dhl_germany_abc123_last_successful_update").state
         == "2030-01-02T09:00:00+00:00"
@@ -101,16 +99,18 @@ async def test_parcel_sensor_has_suite_shape(
     assert state.attributes["live"]["stops_away"] == 3
 
 
-async def test_unknown_source_state_is_unknown(
+async def test_unknown_connection_state_is_unknown(
     hass: HomeAssistant, loaded: MockConfigEntry, client
 ) -> None:
     """A state this version does not know shows as unknown, not an error."""
-    sources = [dict(s) for s in payloads.SOURCES]
-    sources[0]["state"] = "something_new"
-    client.async_get_sources.side_effect = lambda: sources
+    connections = [dict(s) for s in payloads.CONNECTIONS]
+    connections[0]["state"] = "something_new"
+    client.async_get_connections.side_effect = lambda: connections
     await loaded.runtime_data.coordinator.async_refresh()
     await hass.async_block_till_done()
-    assert hass.states.get("sensor.dhl_germany_abc123_source_state").state == "unknown"
+    assert (
+        hass.states.get("sensor.dhl_germany_abc123_connection_state").state == "unknown"
+    )
 
 
 async def test_history_option(

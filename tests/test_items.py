@@ -52,7 +52,7 @@ def _with_items(parcels: list[dict[str, Any]]) -> list[dict[str, Any]]:
     parcels[0]["items"] = [dict(ORDER["items"][0])]
     parcels[0]["order"] = dict(ORDER)
     parcels[0]["display_name"] = "Example lamp"
-    parcels[1]["display_name"] = parcels[1]["barcode"]
+    parcels[1]["display_name"] = parcels[1]["tracking_number"]
     return parcels
 
 

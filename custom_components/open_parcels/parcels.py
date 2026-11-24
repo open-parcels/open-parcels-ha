@@ -53,17 +53,17 @@ def is_delivered(parcel: Mapping[str, Any]) -> bool:
     )
 
 
-def owner_source_id(parcel: Mapping[str, Any]) -> str | None:
-    """The source whose device the parcel's entities live on.
+def owner_connection_id(parcel: Mapping[str, Any]) -> str | None:
+    """The connection whose device the parcel's entities live on.
 
-    The primary source wins, then a hand-off, then a mail source. A parcel no
-    source follows (tracked by code only) belongs to the hub.
+    The primary connection wins, then a hand-off, then a mail connection. A parcel no
+    connection follows (tracked by code only) belongs to the hub.
     """
-    refs = [ref for ref in parcel.get("sources") or [] if isinstance(ref, Mapping)]
+    refs = [ref for ref in parcel.get("connections") or [] if isinstance(ref, Mapping)]
     for role in ("primary", "handoff", "mail"):
         for ref in refs:
-            if ref.get("role") == role and ref.get("source_id"):
-                return str(ref["source_id"])
+            if ref.get("role") == role and ref.get("connection_id"):
+                return str(ref["connection_id"])
     return None
 
 
@@ -116,15 +116,17 @@ def to_suite_parcel(
     order = parcel.get("order")
     return {
         "carrier": names.get(carrier_id, carrier_id) or None,
-        "barcode": parcel.get("barcode"),
+        "tracking_number": parcel.get("tracking_number"),
         "sender": parcel.get("sender"),
         "receiver": parcel.get("receiver"),
         "status": status.value,
         "raw_status": parcel.get("raw_status"),
         "delivered": delivered,
         "delivered_at": parcel.get("delivered_at") if delivered else None,
-        "planned_from": None if delivered else parcel.get("planned_from"),
-        "planned_to": None if delivered else parcel.get("planned_to"),
+        "expected_from": None if delivered else parcel.get("expected_from"),
+        "expected_to": None if delivered else parcel.get("expected_to"),
+        # The expected delivery as the server's local days, when it is whole days.
+        "expected_days": None if delivered else parcel.get("expected_days"),
         "pickup": bool(parcel.get("pickup")),
         "pickup_point": parcel.get("pickup_point"),
         "url": parcel.get("url"),
@@ -134,21 +136,20 @@ def to_suite_parcel(
         "raw": None,
         "id": parcel.get("id"),
         "carrier_id": carrier_id or None,
-        "direction": parcel.get("direction") or "incoming",
+        "direction": parcel.get("direction") or "receiving",
         "label": parcel.get("label"),
         # The label, else the item names or the code, per the server's setting.
         "display_name": parcel.get("display_name")
         or parcel.get("label")
-        or parcel.get("barcode"),
-        # The server's `status` is already the effective one; older servers lack
-        # `carrier_status` and send the carrier's value as `status`.
-        "carrier_status": parcel.get("carrier_status", parcel.get("status")),
+        or parcel.get("tracking_number"),
+        # The server's `status` is already the effective one.
+        "carrier_status": parcel.get("carrier_status"),
         "manual_status": parcel.get("manual_status"),
         "items": list(parcel.get("items") or []),
         "order": dict(order) if isinstance(order, Mapping) else None,
         "live": strip_live(parcel.get("live")),
         "lookup": parcel.get("lookup"),
-        "source_id": owner_source_id(parcel),
+        "connection_id": owner_connection_id(parcel),
         "first_seen_at": parcel.get("first_seen_at"),
         "updated_at": parcel.get("updated_at"),
     }
@@ -209,12 +210,12 @@ def count_by_carrier(parcels: Iterable[Mapping[str, Any]]) -> dict[str, int]:
 def next_delivery(
     parcels: Iterable[dict[str, Any]],
 ) -> tuple[datetime | None, dict[str, Any] | None, dict[str, datetime]]:
-    """Earliest ``planned_from`` overall, its parcel, and the earliest per carrier."""
+    """Earliest ``expected_from`` overall, its parcel, and the earliest per carrier."""
     earliest: datetime | None = None
     earliest_parcel: dict[str, Any] | None = None
     by_carrier: dict[str, datetime] = {}
     for parcel in parcels:
-        moment = parse_iso(parcel.get("planned_from"))
+        moment = parse_iso(parcel.get("expected_from"))
         if moment is None:
             continue
         label = parcel.get("carrier") or "Unknown"

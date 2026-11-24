@@ -4,7 +4,7 @@ track_parcel:
       selector:
         config_entry:
           integration: open_parcels
-    tracking_code:
+    tracking_number:
       required: true
       example: "EXAMPLE0000000001"
       selector:
@@ -17,13 +17,13 @@ track_parcel:
       selector:
         text:
     direction:
-      default: incoming
+      default: receiving
       selector:
         select:
           translation_key: direction
           options:
-            - incoming
-            - outgoing
+            - receiving
+            - sending
 
 archive_parcel:
   fields:
@@ -31,7 +31,7 @@ archive_parcel:
       selector:
         config_entry:
           integration: open_parcels
-    tracking_code:
+    tracking_number:
       selector:
         text:
     parcel_id:
@@ -44,7 +44,7 @@ refresh:
       selector:
         config_entry:
           integration: open_parcels
-    tracking_code:
+    tracking_number:
       selector:
         text:
     parcel_id:

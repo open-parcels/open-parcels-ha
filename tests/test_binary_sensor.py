@@ -7,7 +7,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 
 async def test_binary_sensors(hass: HomeAssistant, loaded: MockConfigEntry) -> None:
-    """The stream is connected; the GLS source needs a sign-in."""
+    """The stream is connected; the GLS connection needs a sign-in."""
     stream_state = hass.states.get("binary_sensor.open_parcels_event_stream")
     assert stream_state.state == "on"
     assert stream_state.attributes["events_received"] == 0

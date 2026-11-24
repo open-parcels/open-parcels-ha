@@ -89,8 +89,8 @@
     },
     "direction": {
       "options": {
-        "incoming": "Eingehend",
-        "outgoing": "Ausgehend"
+        "receiving": "Empfangen",
+        "sending": "Versenden"
       }
     }
   },
@@ -103,7 +103,7 @@
           "name": "Server",
           "description": "Der Open-Parcels-Server. Nur nötig, wenn mehrere eingerichtet sind."
         },
-        "tracking_code": {
+        "tracking_number": {
           "name": "Sendungsnummer",
           "description": "Die Sendungsnummer des Pakets."
         },
@@ -129,7 +129,7 @@
           "name": "Server",
           "description": "Der Open-Parcels-Server. Nur nötig, wenn mehrere eingerichtet sind."
         },
-        "tracking_code": {
+        "tracking_number": {
           "name": "Sendungsnummer",
           "description": "Die Sendungsnummer des Pakets."
         },
@@ -141,13 +141,13 @@
     },
     "refresh": {
       "name": "Aktualisieren",
-      "description": "Alles neu vom Server lesen. Mit einem Paket werden zuerst die Quellen ausgeführt, die es verfolgen.",
+      "description": "Alles neu vom Server lesen. Mit einem Paket werden zuerst die Verbindungen ausgeführt, die es verfolgen.",
       "fields": {
         "config_entry_id": {
           "name": "Server",
           "description": "Der Open-Parcels-Server. Nur nötig, wenn mehrere eingerichtet sind."
         },
-        "tracking_code": {
+        "tracking_number": {
           "name": "Sendungsnummer",
           "description": "Optional: die Sendungsnummer eines Pakets, das zuerst aktualisiert wird."
         },
@@ -164,12 +164,12 @@
       "parcel_status_changed": "Der Status einer Sendung hat sich geändert",
       "parcel_delivered": "Eine Sendung wurde zugestellt",
       "parcel_delivery_time_changed": "Die voraussichtliche Zustellzeit einer Sendung hat sich geändert",
-      "outgoing_parcel_registered": "Eine ausgehende Sendung wurde registriert",
-      "outgoing_parcel_delivered": "Eine ausgehende Sendung wurde zugestellt",
+      "sending_parcel_registered": "Ein Paket im Versand wurde registriert",
+      "sending_parcel_delivered": "Ein Paket im Versand wurde zugestellt",
       "parcel_live_updated": "Die Live-Verfolgung einer Sendung hat sich geändert",
       "parcel_removed": "Eine Sendung wurde entfernt",
       "parcel_deleted": "Eine Sendung wurde gelöscht",
-      "source_state_changed": "Der Zustand einer Quelle hat sich geändert",
+      "connection_state_changed": "Der Zustand einer Verbindung hat sich geändert",
       "return_created": "Eine Rücksendung wurde angelegt",
       "return_updated": "Eine Rücksendung hat sich geändert"
     }
@@ -179,7 +179,7 @@
       "event_stream": {
         "name": "Ereignis-Stream"
       },
-      "source_problem": {
+      "connection_problem": {
         "name": "Problem"
       }
     },
@@ -195,7 +195,7 @@
     },
     "device_tracker": {
       "parcel": {
-        "name": "Sendung {barcode}"
+        "name": "Sendung {tracking_number}"
       }
     },
     "sensor": {
@@ -206,36 +206,36 @@
           "partially_delivered": "Teilweise zugestellt"
         }
       },
-      "incoming": {
-        "name": "Eingehende Pakete",
+      "receiving": {
+        "name": "Pakete im Empfang",
         "unit_of_measurement": "Pakete"
       },
-      "outgoing": {
-        "name": "Ausgehende Pakete",
+      "sending": {
+        "name": "Pakete im Versand",
         "unit_of_measurement": "Pakete"
       },
       "delivered": {
         "name": "Zugestellte Pakete",
         "unit_of_measurement": "Pakete"
       },
-      "outgoing_delivered": {
-        "name": "Ausgehende zugestellte Pakete",
+      "sending_delivered": {
+        "name": "Zugestellte Pakete im Versand",
         "unit_of_measurement": "Pakete"
       },
-      "incoming_parcels": {
-        "name": "Eingehende Pakete",
+      "receiving_parcels": {
+        "name": "Pakete im Empfang",
         "unit_of_measurement": "Pakete"
       },
       "delivered_parcels": {
         "name": "Zugestellte Pakete",
         "unit_of_measurement": "Pakete"
       },
-      "outgoing_parcels": {
-        "name": "Ausgehende Pakete",
+      "sending_parcels": {
+        "name": "Pakete im Versand",
         "unit_of_measurement": "Pakete"
       },
-      "outgoing_delivered_parcels": {
-        "name": "Ausgehende zugestellte Pakete",
+      "sending_delivered_parcels": {
+        "name": "Zugestellte Pakete im Versand",
         "unit_of_measurement": "Pakete"
       },
       "en_route_to_pickup_point": {
@@ -252,8 +252,8 @@
       "last_update": {
         "name": "Letzte erfolgreiche Aktualisierung"
       },
-      "source_state": {
-        "name": "Zustand der Quelle",
+      "connection_state": {
+        "name": "Zustand der Verbindung",
         "state": {
           "ok": "OK",
           "needs_sign_in": "Anmeldung nötig",
@@ -279,7 +279,7 @@
       "message": "Der Versanddienst hat open-parcels um eine Pause gebeten: {message}"
     },
     "sync_failed": {
-      "message": "Die Quelle konnte nicht ausgeführt werden: {error}"
+      "message": "Die Verbindung konnte nicht ausgeführt werden: {error}"
     },
     "calendar_failed": {
       "message": "Der Kalender konnte nicht gelesen werden: {error}"

@@ -16,14 +16,14 @@ from homeassistant.util import dt as dt_util
 
 from .const import (
     CLOSED_RETURN_STATUSES,
+    CONNECTION_REMOVED_EVENT,
+    CONNECTION_STATE_EVENT,
     LIVE_POSITION_EVENT,
     LIVE_TRACKING_STATES,
     ORDER_DELETED_EVENT,
     ORDER_UPDATED_EVENT,
     RETURN_EVENT_SUFFIXES,
-    SOURCE_REMOVED_EVENT,
-    SOURCE_STATE_EVENT,
-    SourceState,
+    ConnectionState,
 )
 
 # Parcel events after which the parcel is gone from the server's lists.
@@ -45,7 +45,7 @@ class CourierPosition:
 class OpenParcelsData:
     """Everything the entities read, as last received from the server."""
 
-    sources: dict[str, dict[str, Any]] = field(default_factory=dict)
+    connections: dict[str, dict[str, Any]] = field(default_factory=dict)
     carriers: dict[str, str] = field(default_factory=dict)
     parcels: dict[str, dict[str, Any]] = field(default_factory=dict)
     # Open returns by id (refunded, rejected, cancelled and expired ones are dropped).
@@ -66,8 +66,7 @@ def courier_position(values: Mapping[str, Any]) -> CourierPosition | None:
         latitude=lat,
         longitude=lng,
         accuracy=_number(values.get("accuracy")),
-        # Newer servers send `position_at`, older ones `positionAt`.
-        position_at=values.get("position_at") or values.get("positionAt"),
+        position_at=values.get("position_at"),
         stops_away=stops if isinstance(stops, int) else None,
     )
 
@@ -88,31 +87,31 @@ def older(parcel: Mapping[str, Any], stored: Mapping[str, Any] | None) -> bool:
     return new is not None and old is not None and new < old
 
 
-def source_of(payload: Mapping[str, Any]) -> dict[str, Any]:
-    """The `source` object of a source event; empty when missing or malformed."""
-    source = payload.get("source")
-    return source if isinstance(source, dict) else {}
+def connection_of(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """The `connection` object of a connection event; empty when missing or malformed."""
+    connection = payload.get("connection")
+    return connection if isinstance(connection, dict) else {}
 
 
 def hidden(data: OpenParcelsData, parcel: Mapping[str, Any]) -> bool:
-    """Whether the server hides the parcel: every source it came from is disabled.
+    """Whether the server hides the parcel: every connection it came from is disabled.
 
-    A parcel without sources always shows; one naming a source this entry does
+    A parcel without connections always shows; one naming a connection this entry does
     not know is kept until a reload settles it.
     """
     ids = [
-        str(ref.get("source_id"))
-        for ref in parcel.get("sources") or []
-        if isinstance(ref, Mapping) and ref.get("source_id")
+        str(ref.get("connection_id"))
+        for ref in parcel.get("connections") or []
+        if isinstance(ref, Mapping) and ref.get("connection_id")
     ]
     return bool(ids) and all(
-        (data.sources.get(sid) or {}).get("state") == SourceState.DISABLED
+        (data.connections.get(sid) or {}).get("state") == ConnectionState.DISABLED
         for sid in ids
     )
 
 
 def drop_hidden(data: OpenParcelsData, positions: dict[str, CourierPosition]) -> None:
-    """Forget the parcels a disabled source hides."""
+    """Forget the parcels a disabled connection hides."""
     for parcel_id, parcel in list(data.parcels.items()):
         if hidden(data, parcel):
             data.parcels.pop(parcel_id)
@@ -163,12 +162,12 @@ def merge_position(
 
 
 def _crosses_disabled(old: Any, new: Any) -> bool:
-    return old != new and SourceState.DISABLED in (old, new)
+    return old != new and ConnectionState.DISABLED in (old, new)
 
 
-def merge_source_state(data: OpenParcelsData, payload: Mapping[str, Any]) -> bool:
-    """Apply `source.state_changed`; True when it enabled or disabled the source."""
-    known = data.sources.get(str(source_of(payload).get("id") or ""))
+def merge_connection_state(data: OpenParcelsData, payload: Mapping[str, Any]) -> bool:
+    """Apply `connection.state_changed`; True when it enabled or disabled the connection."""
+    known = data.connections.get(str(connection_of(payload).get("id") or ""))
     if known is None:
         return False
     old = known.get("state")
@@ -177,44 +176,46 @@ def merge_source_state(data: OpenParcelsData, payload: Mapping[str, Any]) -> boo
     return _crosses_disabled(old, known["state"])
 
 
-def merge_source_snapshot(
+def merge_connection_snapshot(
     data: OpenParcelsData, payload: Mapping[str, Any]
 ) -> tuple[bool, bool]:
-    """Take a source as an event reports it.
+    """Take a connection as an event reports it.
 
     Returns whether it is new to this entry and whether it was enabled or disabled.
     """
-    source = source_of(payload)
-    source_id = str(source.get("id") or "")
-    if not source_id:
+    connection = connection_of(payload)
+    connection_id = str(connection.get("id") or "")
+    if not connection_id:
         return False, False
-    known = data.sources.get(source_id)
+    known = data.connections.get(connection_id)
     new = known is None
     if known is None:
-        known = data.sources[source_id] = {"id": source_id}
+        known = data.connections[connection_id] = {"id": connection_id}
     old = known.get("state")
-    for key in ("plugin", "label", "kind"):
-        if key in source:
-            known[key] = source[key]
+    for key in ("provider", "label", "kind"):
+        if key in connection:
+            known[key] = connection[key]
     if "state" in payload:
         known["state"] = payload["state"]
         known["state_detail"] = payload.get("detail")
     return new, _crosses_disabled(old, known.get("state")) and not new
 
 
-def merge_source_removed(data: OpenParcelsData, payload: Mapping[str, Any]) -> None:
-    """Drop a deleted or merged source; its parcels lose the link."""
-    source_id = str(source_of(payload).get("id") or "")
-    data.sources.pop(source_id, None)
+def merge_connection_removed(data: OpenParcelsData, payload: Mapping[str, Any]) -> None:
+    """Drop a deleted or merged connection; its parcels lose the link."""
+    connection_id = str(connection_of(payload).get("id") or "")
+    data.connections.pop(connection_id, None)
     for pid, parcel in list(data.parcels.items()):
-        refs = parcel.get("sources") or []
+        refs = parcel.get("connections") or []
         kept = [
             ref
             for ref in refs
-            if not (isinstance(ref, Mapping) and ref.get("source_id") == source_id)
+            if not (
+                isinstance(ref, Mapping) and ref.get("connection_id") == connection_id
+            )
         ]
         if len(kept) != len(refs):
-            data.parcels[pid] = {**parcel, "sources": kept}
+            data.parcels[pid] = {**parcel, "connections": kept}
 
 
 def merge_order_updated(data: OpenParcelsData, payload: Mapping[str, Any]) -> bool:
@@ -283,13 +284,13 @@ def reapply(
     """Apply a message again to a newer snapshot, without any side effects."""
     if event_type == LIVE_POSITION_EVENT:
         merge_position(positions, payload)
-    elif event_type == SOURCE_STATE_EVENT:
-        if merge_source_state(data, payload):
+    elif event_type == CONNECTION_STATE_EVENT:
+        if merge_connection_state(data, payload):
             drop_hidden(data, positions)
-    elif event_type == SOURCE_REMOVED_EVENT:
-        merge_source_removed(data, payload)
-    elif event_type.startswith("source."):
-        merge_source_snapshot(data, payload)
+    elif event_type == CONNECTION_REMOVED_EVENT:
+        merge_connection_removed(data, payload)
+    elif event_type.startswith("connection."):
+        merge_connection_snapshot(data, payload)
         drop_hidden(data, positions)
     elif event_type == ORDER_UPDATED_EVENT:
         merge_order_updated(data, payload)

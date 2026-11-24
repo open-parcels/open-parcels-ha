@@ -34,10 +34,10 @@ def _missing(kind: str, objects: list[dict[str, Any]]) -> list[str]:
     [
         ("parcel", payloads.parcels()),
         (
-            "parcel_source_ref",
-            [ref for parcel in payloads.parcels() for ref in parcel["sources"]],
+            "parcel_connection_ref",
+            [ref for parcel in payloads.parcels() for ref in parcel["connections"]],
         ),
-        ("source", payloads.SOURCES),
+        ("connection", payloads.CONNECTIONS),
         ("carrier", payloads.CARRIERS),
         ("calendar_entry", payloads.calendar_entries()),
         ("return", payloads.returns()),

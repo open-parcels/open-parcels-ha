@@ -1,15 +1,18 @@
 {
-  "_source": "open-parcels docs/openapi.json, API 2.0.0 (server commit 9a3750c): the required keys of each list item. Refresh when the server contract changes.",
+  "_source": "open-parcels docs/openapi.json, API 2.0.0 (server commit 862cb55, glossary names): the required keys of each list item. Refresh when the server contract changes.",
   "parcel": [
     "archived_at",
-    "barcode",
     "carrier",
     "carrier_delivered",
     "carrier_status",
+    "connections",
     "delivered",
     "delivered_at",
     "direction",
     "display_name",
+    "expected_days",
+    "expected_from",
+    "expected_to",
     "first_seen_at",
     "history",
     "id",
@@ -23,25 +26,23 @@
     "order",
     "pickup",
     "pickup_point",
-    "planned_from",
-    "planned_to",
     "raw_status",
     "receiver",
     "sender",
-    "sources",
     "status",
+    "tracking_number",
     "updated_at",
     "url"
   ],
-  "parcel_source_ref": [
+  "parcel_connection_ref": [
+    "connection_id",
     "kind",
     "label",
     "last_seen_at",
-    "plugin",
-    "role",
-    "source_id"
+    "provider",
+    "role"
   ],
-  "source": [
+  "connection": [
     "config",
     "has_secret",
     "id",
@@ -50,7 +51,7 @@
     "last_ok_at",
     "last_run_at",
     "next_run_at",
-    "plugin",
+    "provider",
     "state",
     "state_detail"
   ],
@@ -75,7 +76,6 @@
   ],
   "calendar_entry": [
     "all_day",
-    "barcode",
     "carrier",
     "details",
     "end",
@@ -91,17 +91,18 @@
     "start_date",
     "status",
     "title",
+    "tracking_number",
     "uid",
     "url"
   ],
   "carrier": [
     "config_schema",
+    "connection_kinds",
     "countries",
     "id",
     "name",
     "secret_schema",
     "sign_in",
-    "sign_in_flows",
-    "source_kinds"
+    "sign_in_flows"
   ]
 }

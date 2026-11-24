@@ -80,16 +80,16 @@ async def test_requests_send_token_and_parse(
     hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
 ) -> None:
     """Each method hits its route with the Bearer token."""
-    aioclient_mock.get(f"{API}/sources", json=[{"id": "s"}])
+    aioclient_mock.get(f"{API}/connections", json=[{"id": "s"}])
     aioclient_mock.get(f"{API}/carriers", json=[{"id": "dhl"}])
     aioclient_mock.get(f"{API}/parcels", json=[{"id": "p"}])
     aioclient_mock.get(f"{API}/calendar", json=[])
     aioclient_mock.post(f"{API}/parcels", json={"id": "p"}, status=201)
     aioclient_mock.patch(f"{API}/parcels/p", json={"id": "p"})
-    aioclient_mock.post(f"{API}/sources/s/sync", status=202)
+    aioclient_mock.post(f"{API}/connections/s/sync", status=202)
     client = _client(hass)
 
-    assert await client.async_get_sources() == [{"id": "s"}]
+    assert await client.async_get_connections() == [{"id": "s"}]
     assert await client.async_get_carriers() == [{"id": "dhl"}]
     assert await client.async_get_parcels(include_history=True, limit=5) == [
         {"id": "p"}
@@ -100,14 +100,14 @@ async def test_requests_send_token_and_parse(
         "TEST0001", carrier="dhl", label="Shoes"
     ) == {"id": "p"}
     assert await client.async_archive_parcel("p") == {"id": "p"}
-    assert await client.async_sync_source("s") is None
+    assert await client.async_sync_connection("s") is None
 
     for _, url, data, headers in aioclient_mock.mock_calls:
         assert headers["Authorization"] == f"Bearer {TOKEN}"
         if str(url).endswith("/parcels") and data:
             assert data == {
-                "barcode": "TEST0001",
-                "direction": "incoming",
+                "tracking_number": "TEST0001",
+                "direction": "receiving",
                 "carrier": "dhl",
                 "label": "Shoes",
             }
@@ -150,10 +150,10 @@ async def test_errors(
 ) -> None:
     """HTTP errors map to typed exceptions, with the server's message."""
     aioclient_mock.get(
-        f"{API}/sources", status=status, json={"error": "code", "message": "text"}
+        f"{API}/connections", status=status, json={"error": "code", "message": "text"}
     )
     with pytest.raises(error) as info:
-        await _client(hass).async_get_sources()
+        await _client(hass).async_get_connections()
     assert isinstance(info.value, OpenParcelsApiError)
     assert info.value.code == "code"
     assert info.value.message == "text"
@@ -163,9 +163,9 @@ async def test_error_without_json_body(
     hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
 ) -> None:
     """A non-JSON error body still raises cleanly."""
-    aioclient_mock.get(f"{API}/sources", status=502, text="Bad gateway")
+    aioclient_mock.get(f"{API}/connections", status=502, text="Bad gateway")
     with pytest.raises(OpenParcelsApiError) as info:
-        await _client(hass).async_get_sources()
+        await _client(hass).async_get_connections()
     assert info.value.code is None
 
 
@@ -173,18 +173,18 @@ async def test_connection_error(
     hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
 ) -> None:
     """Network errors become OpenParcelsConnectionError."""
-    aioclient_mock.get(f"{API}/sources", exc=aiohttp.ClientConnectionError("down"))
+    aioclient_mock.get(f"{API}/connections", exc=aiohttp.ClientConnectionError("down"))
     with pytest.raises(OpenParcelsConnectionError):
-        await _client(hass).async_get_sources()
+        await _client(hass).async_get_connections()
 
 
 async def test_validate(
     hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
 ) -> None:
-    """Read is checked by listing sources, write by a sync that must 404."""
-    aioclient_mock.get(f"{API}/sources", json=[])
+    """Read is checked by listing connections, write by a sync that must 404."""
+    aioclient_mock.get(f"{API}/connections", json=[])
     aioclient_mock.post(
-        re.compile(rf"{API}/sources/.+/sync"),
+        re.compile(rf"{API}/connections/.+/sync"),
         status=404,
         json={"error": "not_found"},
     )
@@ -195,9 +195,9 @@ async def test_validate_without_write_scope(
     hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
 ) -> None:
     """A read-only token fails validation with a scope error."""
-    aioclient_mock.get(f"{API}/sources", json=[])
+    aioclient_mock.get(f"{API}/connections", json=[])
     aioclient_mock.post(
-        re.compile(rf"{API}/sources/.+/sync"),
+        re.compile(rf"{API}/connections/.+/sync"),
         status=403,
         json={"error": "forbidden"},
     )
@@ -305,9 +305,9 @@ async def test_non_json_answer_is_a_client_error(
     hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
 ) -> None:
     """A 200 that is not JSON raises OpenParcelsError, not a bare JSONDecodeError."""
-    aioclient_mock.get(f"{API}/sources", text="<html>proxy</html>")
+    aioclient_mock.get(f"{API}/connections", text="<html>proxy</html>")
     with pytest.raises(OpenParcelsError):
-        await _client(hass).async_get_sources()
+        await _client(hass).async_get_connections()
 
 
 async def test_stream_errors() -> None:
@@ -344,9 +344,11 @@ async def test_ids_are_escaped_in_paths(
     hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
 ) -> None:
     """An id cannot change the route it is sent to (HA-020)."""
-    aioclient_mock.post(f"{API}/sources/a%2F..%2Fb/sync", status=202)
-    await _client(hass).async_sync_source("a/../b")
-    assert str(aioclient_mock.mock_calls[-1][1]).endswith("/sources/a%2F..%2Fb/sync")
+    aioclient_mock.post(f"{API}/connections/a%2F..%2Fb/sync", status=202)
+    await _client(hass).async_sync_connection("a/../b")
+    assert str(aioclient_mock.mock_calls[-1][1]).endswith(
+        "/connections/a%2F..%2Fb/sync"
+    )
 
 
 async def test_parcel_picture(

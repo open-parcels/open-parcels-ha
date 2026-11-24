@@ -1,6 +1,6 @@
-"""Device triggers for the parcel and source events.
+"""Device triggers for the parcel and connection events.
 
-A source device's triggers fire for that source's parcels; the hub's fire for
+A connection device's triggers fire for that connection's parcels; the hub's fire for
 every parcel of the server.
 """
 
@@ -39,9 +39,9 @@ def _is_hub(hass: HomeAssistant, device_id: str) -> bool:
     device = dr.async_get(hass).async_get(device_id)
     if device is None:
         return False
-    # Hub identifiers are the bare entry id; source ones carry "_source_".
+    # Hub identifiers are the bare entry id; connection ones carry "_connection_".
     return any(
-        domain == DOMAIN and "_source_" not in identifier
+        domain == DOMAIN and "_connection_" not in identifier
         for domain, identifier in device.identifiers
     )
 

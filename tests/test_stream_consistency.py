@@ -184,7 +184,11 @@ async def test_order_updated_and_deleted(
 def _state_change(old: str, new: str) -> str:
     return json.dumps(
         {
-            "source": {"id": payloads.SOURCE_GLS, "plugin": "gls", "label": "x"},
+            "connection": {
+                "id": payloads.CONNECTION_GLS,
+                "provider": "gls",
+                "label": "x",
+            },
             "old_state": old,
             "new_state": new,
             "detail": None,
@@ -192,25 +196,25 @@ def _state_change(old: str, new: str) -> str:
     )
 
 
-async def test_disabling_and_enabling_a_source(
+async def test_disabling_and_enabling_a_connection(
     hass: HomeAssistant, loaded: MockConfigEntry, stream: FakeStream, client: MagicMock
 ) -> None:
-    """A disabled source's parcels go at once and come back on enabling (HA-006)."""
+    """A disabled connection's parcels go at once and come back on enabling (HA-006)."""
     coordinator = loaded.runtime_data.coordinator
     await hass.async_block_till_done()
     visible = payloads.parcels()
 
-    # The server reports the source disabled and hides its parcels from every list.
-    client.async_get_sources.side_effect = lambda: [
-        {**s, "state": "disabled"} if s["id"] == payloads.SOURCE_GLS else dict(s)
-        for s in payloads.SOURCES
+    # The server reports the connection disabled and hides its parcels from every list.
+    client.async_get_connections.side_effect = lambda: [
+        {**s, "state": "disabled"} if s["id"] == payloads.CONNECTION_GLS else dict(s)
+        for s in payloads.CONNECTIONS
     ]
     client.async_get_parcels.side_effect = lambda **_: [
         p for p in visible if p["id"] != payloads.PARCEL_B
     ]
     before = client.async_get_parcels.await_count
     stream.push(
-        "source.state_changed", _state_change("needs_sign_in", "disabled"), "230"
+        "connection.state_changed", _state_change("needs_sign_in", "disabled"), "230"
     )
     await hass.async_block_till_done()
     assert payloads.PARCEL_B not in coordinator.data.parcels
@@ -227,9 +231,11 @@ async def test_disabling_and_enabling_a_source(
     assert payloads.PARCEL_B not in coordinator.data.parcels
 
     # Enabled again: the reload (after the refresh cooldown) brings the parcel back.
-    client.async_get_sources.side_effect = lambda: [dict(s) for s in payloads.SOURCES]
+    client.async_get_connections.side_effect = lambda: [
+        dict(s) for s in payloads.CONNECTIONS
+    ]
     client.async_get_parcels.side_effect = lambda **_: visible
-    stream.push("source.state_changed", _state_change("disabled", "ok"), "232")
+    stream.push("connection.state_changed", _state_change("disabled", "ok"), "232")
     await hass.async_block_till_done()
     async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=11))
     await hass.async_block_till_done()
@@ -328,7 +334,7 @@ async def test_a_reset_server_sequence_is_not_taken_for_a_replay(
     new = _parcel(
         1,
         id="eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
-        barcode="TEST0000000005",
+        tracking_number="TEST0000000005",
         status="registered",
     )
     stream.push("parcel.registered", json.dumps({"parcel": new}), "6")

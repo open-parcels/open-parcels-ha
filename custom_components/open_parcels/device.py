@@ -1,4 +1,4 @@
-"""Devices: one hub for the server, one device per Open Parcels source."""
+"""Devices: one hub for the server, one device per Open Parcels connection."""
 
 from __future__ import annotations
 
@@ -20,9 +20,9 @@ def hub_identifier(entry_id: str) -> tuple[str, str]:
     return (DOMAIN, entry_id)
 
 
-def source_identifier(entry_id: str, source_id: str) -> tuple[str, str]:
-    """Device identifier of a source."""
-    return (DOMAIN, f"{entry_id}_source_{source_id}")
+def connection_identifier(entry_id: str, connection_id: str) -> tuple[str, str]:
+    """Device identifier of a connection."""
+    return (DOMAIN, f"{entry_id}_connection_{connection_id}")
 
 
 def find_device(
@@ -56,16 +56,18 @@ def hub_device_info(entry: ConfigEntry) -> DeviceInfo:
     )
 
 
-def source_device_name(source: Mapping[str, Any], carriers: Mapping[str, str]) -> str:
-    """Name a source's device "<carrier> <label>", unless the label already says it.
+def connection_device_name(
+    connection: Mapping[str, Any], carriers: Mapping[str, str]
+) -> str:
+    """Name a connection's device "<carrier> <label>", unless the label already says it.
 
-    With the source labelled like the old integration's entry title (for
+    With the connection labelled like the old integration's entry title (for
     example "Germany (7c6c9a)"), the device name, and therefore every entity
     id derived from it, matches what the per-carrier integration produced.
     """
-    plugin = str(source.get("plugin") or "")
-    carrier = carriers.get(plugin, plugin)
-    label = str(source.get("label") or "").strip()
+    provider = str(connection.get("provider") or "")
+    carrier = carriers.get(provider, provider)
+    label = str(connection.get("label") or "").strip()
     if not label:
         return carrier
     if not carrier or label.casefold().startswith(carrier.casefold()):
@@ -73,20 +75,20 @@ def source_device_name(source: Mapping[str, Any], carriers: Mapping[str, str]) -
     return f"{carrier} {label}"
 
 
-def source_device_info(
-    entry: ConfigEntry, source: Mapping[str, Any], carriers: Mapping[str, str]
+def connection_device_info(
+    entry: ConfigEntry, connection: Mapping[str, Any], carriers: Mapping[str, str]
 ) -> DeviceInfo:
-    """DeviceInfo of one source.
+    """DeviceInfo of one connection.
 
     The link to the hub is set by device id when the device is registered
     (``via_device_id``), which every supported Home Assistant release accepts.
     """
-    plugin = str(source.get("plugin") or "")
+    provider = str(connection.get("provider") or "")
     return DeviceInfo(
-        identifiers={source_identifier(entry.entry_id, str(source["id"]))},
-        name=source_device_name(source, carriers),
-        manufacturer=carriers.get(plugin, plugin) or None,
-        model=str(source.get("kind") or "") or None,
+        identifiers={connection_identifier(entry.entry_id, str(connection["id"]))},
+        name=connection_device_name(connection, carriers),
+        manufacturer=carriers.get(provider, provider) or None,
+        model=str(connection.get("kind") or "") or None,
         entry_type=DeviceEntryType.SERVICE,
         configuration_url=server_url(entry) or None,
     )

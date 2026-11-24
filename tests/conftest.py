@@ -73,8 +73,8 @@ def client(stream: FakeStream) -> Generator[MagicMock]:
     """A mocked client used by the integration and the config flow."""
     mock = MagicMock()
     mock.base_url = URL
-    mock.async_get_sources = AsyncMock(
-        side_effect=lambda: [dict(s) for s in payloads.SOURCES]
+    mock.async_get_connections = AsyncMock(
+        side_effect=lambda: [dict(s) for s in payloads.CONNECTIONS]
     )
     mock.async_get_carriers = AsyncMock(return_value=payloads.CARRIERS)
     mock.async_get_parcels = AsyncMock(side_effect=lambda **_: payloads.parcels())
@@ -86,7 +86,7 @@ def client(stream: FakeStream) -> Generator[MagicMock]:
         return_value={"id": payloads.PARCEL_A, "carrier": "dhl"}
     )
     mock.async_archive_parcel = AsyncMock(return_value={})
-    mock.async_sync_source = AsyncMock(return_value=None)
+    mock.async_sync_connection = AsyncMock(return_value=None)
     mock.async_validate = AsyncMock(return_value=None)
     mock.async_stream_events = stream
     with (
@@ -104,6 +104,7 @@ def entry() -> MockConfigEntry:
     """A config entry with a unique id, as real ones have."""
     return MockConfigEntry(
         domain=DOMAIN,
+        version=2,
         title="Open Parcels",
         unique_id=URL,
         data={CONF_URL: URL, CONF_API_TOKEN: TOKEN},

@@ -2,7 +2,7 @@
   "entity": {
     "binary_sensor": {
       "event_stream": { "default": "mdi:lan-connect", "state": { "off": "mdi:lan-disconnect" } },
-      "source_problem": { "default": "mdi:account-check", "state": { "on": "mdi:account-alert" } }
+      "connection_problem": { "default": "mdi:account-check", "state": { "on": "mdi:account-alert" } }
     },
     "button": {
       "refresh": { "default": "mdi:refresh" }
@@ -14,20 +14,20 @@
       "parcel": { "default": "mdi:package-variant-closed", "state": { "out_for_delivery": "mdi:truck-fast", "at_pickup_point": "mdi:store-clock", "returning": "mdi:keyboard-return", "problem": "mdi:package-variant-remove" } }
     },
     "sensor": {
-      "incoming": { "default": "mdi:package-variant-closed" },
-      "outgoing": { "default": "mdi:package-up" },
+      "receiving": { "default": "mdi:package-variant-closed" },
+      "sending": { "default": "mdi:package-up" },
       "delivered": { "default": "mdi:package-variant" },
-      "outgoing_delivered": { "default": "mdi:package-check" },
-      "incoming_parcels": { "default": "mdi:package-variant-closed" },
+      "sending_delivered": { "default": "mdi:package-check" },
+      "receiving_parcels": { "default": "mdi:package-variant-closed" },
       "delivered_parcels": { "default": "mdi:package-variant" },
-      "outgoing_parcels": { "default": "mdi:package-up" },
-      "outgoing_delivered_parcels": { "default": "mdi:package-check" },
+      "sending_parcels": { "default": "mdi:package-up" },
+      "sending_delivered_parcels": { "default": "mdi:package-check" },
       "en_route_to_pickup_point": { "default": "mdi:truck-delivery" },
       "awaiting_pickup": { "default": "mdi:store-clock" },
       "next_delivery": { "default": "mdi:clock-fast" },
       "last_update": { "default": "mdi:clock-check-outline" },
       "open_returns": { "default": "mdi:keyboard-return" },
-      "source_state": { "default": "mdi:account-sync" },
+      "connection_state": { "default": "mdi:account-sync" },
       "order": { "default": "mdi:shopping", "state": { "partially_delivered": "mdi:shopping-outline" } }
     }
   },

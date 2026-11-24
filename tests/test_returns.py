@@ -134,7 +134,7 @@ async def test_calendar_return_entry(hass: HomeAssistant) -> None:
             "order_id": payloads.RETURN_ORDER,
             "title": "Example shoes",
             "carrier": "dhl",
-            "barcode": "ORDER-0001",
+            "tracking_number": "ORDER-0001",
             "status": "label_created",
             "kind": "return_by",
             "details": ["Drop off: Parcel locker (dhl)", "Free return"],

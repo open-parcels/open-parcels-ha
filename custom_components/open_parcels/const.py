@@ -32,7 +32,7 @@ class ParcelStatus(StrEnum):
 
 # Statuses of a parcel still on its way (or waiting to be fetched or sent back): only
 # these get their own tracker entity. Finished and unknown parcels show up in the list
-# sensors instead, so a source's device page does not fill up with old deliveries.
+# sensors instead, so a connection's device page does not fill up with old deliveries.
 OPEN_STATUSES = frozenset(
     {
         ParcelStatus.REGISTERED,
@@ -45,15 +45,14 @@ OPEN_STATUSES = frozenset(
 )
 
 
-class SourceState(StrEnum):
-    """State of an Open Parcels source."""
+class ConnectionState(StrEnum):
+    """State of an Open Parcels connection."""
 
     OK = "ok"
     NEEDS_SIGN_IN = "needs_sign_in"
     ERROR = "error"
     DISABLED = "disabled"
-    # The last run deliberately did nothing; the detail says why. Servers before
-    # this state existed report it as "ok" with a detail (see NOT_RUN_YET_DETAIL).
+    # The last run deliberately did nothing; the detail says why.
     IDLE = "idle"
 
 
@@ -97,28 +96,24 @@ SERVER_EVENT_SUFFIXES: dict[str, str] = {
     "parcel.status_changed": "parcel_status_changed",
     "parcel.delivered": "parcel_delivered",
     "parcel.delivery_time_changed": "parcel_delivery_time_changed",
-    "parcel.outgoing_registered": "outgoing_parcel_registered",
-    "parcel.outgoing_delivered": "outgoing_parcel_delivered",
+    "parcel.sending_registered": "sending_parcel_registered",
+    "parcel.sending_delivered": "sending_parcel_delivered",
     "parcel.live_updated": "parcel_live_updated",
     "parcel.removed": "parcel_removed",
     "parcel.deleted": "parcel_deleted",
-    "source.state_changed": "source_state_changed",
+    "connection.state_changed": "connection_state_changed",
 }
 LIVE_POSITION_EVENT = "parcel.live_position"
 
-# Source removed (deleted, or merged into another): fired on the bus, but not a device
+# Connection removed (deleted, or merged into another): fired on the bus, but not a device
 # trigger, because the device it would belong to is removed with it.
-SOURCE_REMOVED_EVENT = "source.removed"
-# Events carrying a source as it now is (label, state, detail): a new one gets its
+CONNECTION_REMOVED_EVENT = "connection.removed"
+# Events carrying a connection as it now is (label, state, detail): a new one gets its
 # device, a renamed one its new device name. Not device triggers.
-SOURCE_SNAPSHOT_EVENTS = frozenset(
-    {"source.added", "source.updated", "source.run_finished"}
+CONNECTION_SNAPSHOT_EVENTS = frozenset(
+    {"connection.added", "connection.updated", "connection.run_finished"}
 )
-# The server's detail for a source nothing has judged yet. On older servers, which
-# have no "idle" state, any other detail on an OK source means it ran but had
-# nothing it could do: the sensor then shows "idle" too.
-NOT_RUN_YET_DETAIL = "Not run yet."
-SOURCE_STATE_EVENT = "source.state_changed"
+CONNECTION_STATE_EVENT = "connection.state_changed"
 # A parcel's place changed (scans placed by their place names): taken as a parcel
 # snapshot, not fired on the bus.
 PARCEL_LOCATION_EVENT = "parcel.location_changed"

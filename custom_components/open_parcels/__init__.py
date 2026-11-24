@@ -14,7 +14,8 @@ from homeassistant.helpers.typing import ConfigType
 from .api import OpenParcelsClient
 from .const import CONF_API_TOKEN, DOMAIN, PLATFORMS
 from .coordinator import OpenParcelsCoordinator
-from .device import hub_device_info, hub_identifier, source_identifier
+from .device import connection_identifier, hub_device_info, hub_identifier
+from .migrate import async_migrate_entry as async_migrate_entry
 from .picture import ParcelPictureView
 from .services import async_setup_services
 from .stream import async_run_stream
@@ -79,17 +80,17 @@ async def async_unload_entry(
 async def async_remove_config_entry_device(
     hass: HomeAssistant, entry: OpenParcelsConfigEntry, device: dr.DeviceEntry
 ) -> bool:
-    """Allow removing a source device only once the source is gone.
+    """Allow removing a connection device only once the connection is gone.
 
-    An entry that is not loaded (setup retry, disabled) knows no sources, so
-    any source device may go; the next setup creates the live ones again.
+    An entry that is not loaded (setup retry, disabled) knows no connections, so
+    any connection device may go; the next setup creates the live ones again.
     """
     if hub_identifier(entry.entry_id) in device.identifiers:
         return False
     runtime = getattr(entry, "runtime_data", None)
     data = runtime.coordinator.data if runtime is not None else None
-    sources = data.sources if data else {}
+    connections = data.connections if data else {}
     return not any(
-        source_identifier(entry.entry_id, source_id) in device.identifiers
-        for source_id in sources
+        connection_identifier(entry.entry_id, connection_id) in device.identifiers
+        for connection_id in connections
     )

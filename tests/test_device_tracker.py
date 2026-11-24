@@ -28,7 +28,7 @@ async def test_courier_position_then_none(
     assert state.attributes["stops_away"] == 3
     assert state.attributes["gps_accuracy"] == 15
     assert state.attributes["position_source"] == "courier"
-    assert state.attributes["barcode"] == "TEST0000000001"
+    assert state.attributes["tracking_number"] == "TEST0000000001"
 
     stream.push(
         "parcel.live_position",
@@ -38,7 +38,7 @@ async def test_courier_position_then_none(
                 "latitude": 50.5,
                 "longitude": 8.5,
                 "accuracy": None,
-                "positionAt": "2030-01-02T09:31:00.000Z",
+                "position_at": "2030-01-02T09:31:00.000Z",
                 "stops_away": 2,
             }
         ),
@@ -63,7 +63,10 @@ async def test_courier_position_then_none(
         entity._Entity__combined_unrecorded_attributes
     )
     for entity_id, keys in (
-        ("sensor.open_parcels_next_delivery", {"barcode", "sender", "receiver"}),
+        (
+            "sensor.open_parcels_next_delivery",
+            {"tracking_number", "sender", "receiver"},
+        ),
         ("calendar.open_parcels_deliveries", {"description", "location"}),
     ):
         domain = entity_id.split(".")[0]
@@ -147,7 +150,7 @@ async def test_parcel_tracker_is_not_diagnostic(
 async def test_position_time_in_snake_case(
     hass: HomeAssistant, loaded: MockConfigEntry, stream: FakeStream
 ) -> None:
-    """The courier message's `position_at` (newer servers) is read like `positionAt`."""
+    """The courier message's `position_at` is the position's time."""
     stream.push(
         "parcel.live_position",
         json.dumps(

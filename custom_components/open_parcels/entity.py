@@ -14,7 +14,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import ATTRIBUTION
 from .coordinator import OpenParcelsCoordinator
-from .device import hub_device_info, source_identifier
+from .device import connection_identifier, hub_device_info
 
 
 class OpenParcelsEntity(CoordinatorEntity[OpenParcelsCoordinator]):
@@ -29,43 +29,47 @@ class OpenParcelsEntity(CoordinatorEntity[OpenParcelsCoordinator]):
         self._attr_unique_id = f"{coordinator.config_entry.entry_id}_{unique_suffix}"
 
 
-class OpenParcelsSourceEntity(OpenParcelsEntity):
-    """Base for the entities of one source, on that source's device."""
+class OpenParcelsConnectionEntity(OpenParcelsEntity):
+    """Base for the entities of one connection, on that connection's device."""
 
     def __init__(
-        self, coordinator: OpenParcelsCoordinator, source_id: str, key: str
+        self, coordinator: OpenParcelsCoordinator, connection_id: str, key: str
     ) -> None:
-        """Key the unique id on the source and place the entity on its device."""
-        super().__init__(coordinator, f"source_{source_id}_{key}")
-        self._source_id = source_id
-        self._attr_device_info = device_for_source(coordinator.config_entry, source_id)
+        """Key the unique id on the connection and place the entity on its device."""
+        super().__init__(coordinator, f"connection_{connection_id}_{key}")
+        self._connection_id = connection_id
+        self._attr_device_info = device_for_connection(
+            coordinator.config_entry, connection_id
+        )
 
     @property
-    def _source(self) -> dict[str, Any]:
-        """The source as last received; empty once it is gone."""
+    def _connection(self) -> dict[str, Any]:
+        """The connection as last received; empty once it is gone."""
         data = self.coordinator.data
-        return (data.sources.get(self._source_id) if data else None) or {}
+        return (data.connections.get(self._connection_id) if data else None) or {}
 
     @property
     def available(self) -> bool:
-        """Unavailable once the source is gone from the server."""
-        return super().available and bool(self._source)
+        """Unavailable once the connection is gone from the server."""
+        return super().available and bool(self._connection)
 
 
-def source_ids(coordinator: OpenParcelsCoordinator) -> Iterable[str]:
-    """The ids of the sources currently known."""
-    return coordinator.data.sources if coordinator.data else ()
+def connection_ids(coordinator: OpenParcelsCoordinator) -> Iterable[str]:
+    """The ids of the connections currently known."""
+    return coordinator.data.connections if coordinator.data else ()
 
 
-def device_for_source(entry: ConfigEntry, source_id: str | None) -> DeviceInfo:
-    """DeviceInfo pointing at a source's device, or the hub's for None.
+def device_for_connection(entry: ConfigEntry, connection_id: str | None) -> DeviceInfo:
+    """DeviceInfo pointing at a connection's device, or the hub's for None.
 
-    Only the identifiers are needed: the coordinator registers the source
+    Only the identifiers are needed: the coordinator registers the connection
     devices with their full details.
     """
-    if source_id is None:
+    if connection_id is None:
         return hub_device_info(entry)
-    return DeviceInfo(identifiers={source_identifier(entry.entry_id, source_id)})
+    return DeviceInfo(
+        identifiers={connection_identifier(entry.entry_id, connection_id)}
+    )
 
 
 def async_add_dynamic(

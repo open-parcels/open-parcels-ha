@@ -78,7 +78,7 @@ _TOKEN_SCHEMA = vol.Schema({vol.Required(CONF_API_TOKEN): _TOKEN_SELECTOR})
 class OpenParcelsConfigFlow(ConfigFlow, domain=DOMAIN):
     """Set up an Open Parcels server."""
 
-    VERSION = 1
+    VERSION = 2
 
     def __init__(self) -> None:
         """Start without a discovered server."""

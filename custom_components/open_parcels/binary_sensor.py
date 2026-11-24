@@ -1,4 +1,4 @@
-"""Binary sensors: the event stream's connection, and per source a problem flag."""
+"""Binary sensors: the event stream's connection, and per connection a problem flag."""
 
 from __future__ import annotations
 
@@ -13,14 +13,14 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import OpenParcelsConfigEntry
-from .const import SourceState
+from .const import ConnectionState
 from .coordinator import OpenParcelsCoordinator
 from .entity import (
+    OpenParcelsConnectionEntity,
     OpenParcelsEntity,
-    OpenParcelsSourceEntity,
     async_add_dynamic,
-    device_for_source,
-    source_ids,
+    connection_ids,
+    device_for_connection,
 )
 
 PARALLEL_UPDATES = 0
@@ -31,15 +31,15 @@ async def async_setup_entry(
     entry: OpenParcelsConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    """Set up the stream sensor and one problem sensor per source."""
+    """Set up the stream sensor and one problem sensor per connection."""
     coordinator = entry.runtime_data.coordinator
     async_add_entities([EventStreamSensor(coordinator)])
     async_add_dynamic(
         coordinator,
         entry,
         async_add_entities,
-        lambda: source_ids(coordinator),
-        lambda source_id: [SourceProblemSensor(coordinator, source_id)],
+        lambda: connection_ids(coordinator),
+        lambda connection_id: [ConnectionProblemSensor(coordinator, connection_id)],
     )
 
 
@@ -53,7 +53,7 @@ class EventStreamSensor(OpenParcelsEntity, BinarySensorEntity):
     def __init__(self, coordinator: OpenParcelsCoordinator) -> None:
         """Belongs to the hub."""
         super().__init__(coordinator, "event_stream")
-        self._attr_device_info = device_for_source(coordinator.config_entry, None)
+        self._attr_device_info = device_for_connection(coordinator.config_entry, None)
 
     @property
     def available(self) -> bool:
@@ -71,21 +71,21 @@ class EventStreamSensor(OpenParcelsEntity, BinarySensorEntity):
         return {"events_received": self.coordinator.events_received}
 
 
-class SourceProblemSensor(OpenParcelsSourceEntity, BinarySensorEntity):
-    """On while the source needs a sign-in or fails."""
+class ConnectionProblemSensor(OpenParcelsConnectionEntity, BinarySensorEntity):
+    """On while the connection needs a sign-in or fails."""
 
     _attr_device_class = BinarySensorDeviceClass.PROBLEM
     _attr_entity_category = EntityCategory.DIAGNOSTIC
-    _attr_translation_key = "source_problem"
+    _attr_translation_key = "connection_problem"
 
-    def __init__(self, coordinator: OpenParcelsCoordinator, source_id: str) -> None:
-        """Belongs to the source's device."""
-        super().__init__(coordinator, source_id, "problem")
+    def __init__(self, coordinator: OpenParcelsCoordinator, connection_id: str) -> None:
+        """Belongs to the connection's device."""
+        super().__init__(coordinator, connection_id, "problem")
 
     @property
     def is_on(self) -> bool:
-        """A source that needs a sign-in or reports an error is a problem."""
-        return self._source.get("state") in (
-            SourceState.NEEDS_SIGN_IN,
-            SourceState.ERROR,
+        """A connection that needs a sign-in or reports an error is a problem."""
+        return self._connection.get("state") in (
+            ConnectionState.NEEDS_SIGN_IN,
+            ConnectionState.ERROR,
         )

@@ -20,10 +20,10 @@ from custom_components.open_parcels.device import find_device
 from . import payloads
 
 
-async def test_setup_creates_hub_and_source_devices(
+async def test_setup_creates_hub_and_connection_devices(
     hass: HomeAssistant, loaded: MockConfigEntry
 ) -> None:
-    """A hub device plus one device per source, linked to the hub."""
+    """A hub device plus one device per connection, linked to the hub."""
     assert loaded.state is ConfigEntryState.LOADED
     hub = find_device(hass, loaded.entry_id, (DOMAIN, loaded.entry_id))
     assert hub is not None
@@ -31,12 +31,12 @@ async def test_setup_creates_hub_and_source_devices(
     dhl = find_device(
         hass,
         loaded.entry_id,
-        (DOMAIN, f"{loaded.entry_id}_source_{payloads.SOURCE_DHL}"),
+        (DOMAIN, f"{loaded.entry_id}_connection_{payloads.CONNECTION_DHL}"),
     )
     gls = find_device(
         hass,
         loaded.entry_id,
-        (DOMAIN, f"{loaded.entry_id}_source_{payloads.SOURCE_GLS}"),
+        (DOMAIN, f"{loaded.entry_id}_connection_{payloads.CONNECTION_GLS}"),
     )
     assert dhl is not None and gls is not None
     assert dhl.name == "DHL Germany (abc123)"
@@ -48,10 +48,10 @@ async def test_setup_creates_hub_and_source_devices(
     assert gls.via_device_id == hub.id
 
 
-async def test_parcel_entities_land_on_their_source_device(
+async def test_parcel_entities_land_on_their_connection_device(
     hass: HomeAssistant, loaded: MockConfigEntry
 ) -> None:
-    """Parcels belong to their primary (or hand-off) source; sourceless to the hub."""
+    """Parcels belong to their primary (or hand-off) connection; connectionless to the hub."""
     entities = er.async_get(hass)
 
     def device_name(entity_id: str) -> str | None:
@@ -83,29 +83,33 @@ async def test_setup_retries_when_server_unreachable(
     hass: HomeAssistant, entry: MockConfigEntry, client: MagicMock
 ) -> None:
     """A connection error makes the entry retry."""
-    client.async_get_sources.side_effect = OpenParcelsConnectionError("down")
+    client.async_get_connections.side_effect = OpenParcelsConnectionError("down")
     entry.add_to_hass(hass)
     await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
     assert entry.state is ConfigEntryState.SETUP_RETRY
-    # A source device of an entry that is not loaded may go; the hub may not (HA-016).
+    # A connection device of an entry that is not loaded may go; the hub may not (HA-016).
     devices = dr.async_get(hass)
     hub = devices.async_get_or_create(
         config_entry_id=entry.entry_id, identifiers={(DOMAIN, entry.entry_id)}
     )
-    source = devices.async_get_or_create(
+    connection = devices.async_get_or_create(
         config_entry_id=entry.entry_id,
-        identifiers={(DOMAIN, f"{entry.entry_id}_source_{payloads.SOURCE_DHL}")},
+        identifiers={
+            (DOMAIN, f"{entry.entry_id}_connection_{payloads.CONNECTION_DHL}")
+        },
     )
     assert not await async_remove_config_entry_device(hass, entry, hub)
-    assert await async_remove_config_entry_device(hass, entry, source)
+    assert await async_remove_config_entry_device(hass, entry, connection)
 
 
 async def test_setup_refused_token_starts_reauth(
     hass: HomeAssistant, entry: MockConfigEntry, client: MagicMock
 ) -> None:
     """A 401 fails setup with a reauth flow."""
-    client.async_get_sources.side_effect = OpenParcelsAuthError(401, "unauthorized", "")
+    client.async_get_connections.side_effect = OpenParcelsAuthError(
+        401, "unauthorized", ""
+    )
     entry.add_to_hass(hass)
     await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
@@ -122,11 +126,11 @@ async def test_unload(hass: HomeAssistant, loaded: MockConfigEntry) -> None:
     assert hass.services.has_service(DOMAIN, "track_parcel")
 
 
-async def test_removed_source_drops_its_device(
+async def test_removed_connection_drops_its_device(
     hass: HomeAssistant, loaded: MockConfigEntry, client: MagicMock
 ) -> None:
-    """A source that disappears from the server loses its device and entities."""
-    client.async_get_sources.side_effect = lambda: [dict(payloads.SOURCES[0])]
+    """A connection that disappears from the server loses its device and entities."""
+    client.async_get_connections.side_effect = lambda: [dict(payloads.CONNECTIONS[0])]
     coordinator = loaded.runtime_data.coordinator
     await coordinator.async_refresh()
     await hass.async_block_till_done()
@@ -134,28 +138,28 @@ async def test_removed_source_drops_its_device(
         find_device(
             hass,
             loaded.entry_id,
-            (DOMAIN, f"{loaded.entry_id}_source_{payloads.SOURCE_GLS}"),
+            (DOMAIN, f"{loaded.entry_id}_connection_{payloads.CONNECTION_GLS}"),
         )
         is None
     )
-    assert hass.states.get("sensor.gls_99999_incoming_parcels") is None
+    assert hass.states.get("sensor.gls_99999_receiving_parcels") is None
 
 
 async def test_remove_config_entry_device(
     hass: HomeAssistant, loaded: MockConfigEntry
 ) -> None:
-    """The hub and live sources cannot be removed by hand; stale ones can."""
+    """The hub and live connections cannot be removed by hand; stale ones can."""
     hub = find_device(hass, loaded.entry_id, (DOMAIN, loaded.entry_id))
     dhl = find_device(
         hass,
         loaded.entry_id,
-        (DOMAIN, f"{loaded.entry_id}_source_{payloads.SOURCE_DHL}"),
+        (DOMAIN, f"{loaded.entry_id}_connection_{payloads.CONNECTION_DHL}"),
     )
     assert hub is not None and dhl is not None
     assert not await async_remove_config_entry_device(hass, loaded, hub)
     assert not await async_remove_config_entry_device(hass, loaded, dhl)
     stale = dr.async_get(hass).async_get_or_create(
         config_entry_id=loaded.entry_id,
-        identifiers={(DOMAIN, f"{loaded.entry_id}_source_gone")},
+        identifiers={(DOMAIN, f"{loaded.entry_id}_connection_gone")},
     )
     assert await async_remove_config_entry_device(hass, loaded, stale)

@@ -54,7 +54,7 @@ async def test_calendar_entry_edge_cases(hass: HomeAssistant) -> None:
             "end": "2999-01-03T23:59:59",
             "all_day": True,
             "title": "",
-            "barcode": "",
+            "tracking_number": "",
         }
     )
     assert event is not None

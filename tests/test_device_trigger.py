@@ -24,18 +24,18 @@ from .conftest import FakeStream
 async def test_device_triggers(
     hass: HomeAssistant, loaded: MockConfigEntry, stream: FakeStream
 ) -> None:
-    """Source triggers fire for that source; hub triggers for every parcel."""
+    """Connection triggers fire for that connection; hub triggers for every parcel."""
     hub = find_device(hass, loaded.entry_id, (DOMAIN, loaded.entry_id))
     gls = find_device(
         hass,
         loaded.entry_id,
-        (DOMAIN, f"{loaded.entry_id}_source_{payloads.SOURCE_GLS}"),
+        (DOMAIN, f"{loaded.entry_id}_connection_{payloads.CONNECTION_GLS}"),
     )
     triggers = await async_get_device_automations(
         hass, DeviceAutomationType.TRIGGER, gls.id
     )
     types = {t["type"] for t in triggers if t["domain"] == DOMAIN}
-    assert "parcel_delivered" in types and "source_state_changed" in types
+    assert "parcel_delivered" in types and "connection_state_changed" in types
 
     calls = async_mock_service(hass, "test", "record")
     assert await async_setup_component(

@@ -214,9 +214,9 @@ class OpenParcelsClient:
             return None
         return bytes(png)
 
-    async def async_get_sources(self) -> list[dict[str, Any]]:
-        """GET /sources."""
-        return list(await self._request("GET", "/sources"))
+    async def async_get_connections(self) -> list[dict[str, Any]]:
+        """GET /connections."""
+        return list(await self._request("GET", "/connections"))
 
     async def async_get_carriers(self) -> list[dict[str, Any]]:
         """GET /carriers."""
@@ -261,14 +261,17 @@ class OpenParcelsClient:
 
     async def async_track_parcel(
         self,
-        barcode: str,
+        tracking_number: str,
         *,
         carrier: str | None = None,
         label: str | None = None,
-        direction: str = "incoming",
+        direction: str = "receiving",
     ) -> dict[str, Any]:
         """POST /parcels: start tracking a code."""
-        body: dict[str, Any] = {"barcode": barcode, "direction": direction}
+        body: dict[str, Any] = {
+            "tracking_number": tracking_number,
+            "direction": direction,
+        }
         if carrier:
             body["carrier"] = carrier
         if label:
@@ -283,20 +286,20 @@ class OpenParcelsClient:
             )
         )
 
-    async def async_sync_source(self, source_id: str) -> None:
-        """POST /sources/{id}/sync."""
-        await self._request("POST", f"/sources/{_segment(source_id)}/sync")
+    async def async_sync_connection(self, connection_id: str) -> None:
+        """POST /connections/{id}/sync."""
+        await self._request("POST", f"/connections/{_segment(connection_id)}/sync")
 
     async def async_validate(self) -> None:
         """Check the token can read and write, without changing anything.
 
-        Reading is checked by listing the sources. Writing is checked by asking
-        to sync a source that cannot exist: a token with the write scope gets
+        Reading is checked by listing the connections. Writing is checked by asking
+        to sync a connection that cannot exist: a token with the write scope gets
         404, one without it gets 403.
         """
-        await self.async_get_sources()
+        await self.async_get_connections()
         try:
-            await self.async_sync_source(str(uuid.uuid4()))
+            await self.async_sync_connection(str(uuid.uuid4()))
         except OpenParcelsNotFoundError:
             return
 

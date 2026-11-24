@@ -43,4 +43,4 @@ async def test_diagnostics_redact(hass: HomeAssistant, loaded: MockConfigEntry) 
         assert secret not in text, secret
     assert result["parcel_count"] == 4
     assert result["stream"]["connected"] is True
-    assert result["sources"][0]["state"] == "ok"
+    assert result["connections"][0]["state"] == "ok"

@@ -89,23 +89,23 @@
     },
     "direction": {
       "options": {
-        "incoming": "Incoming",
-        "outgoing": "Outgoing"
+        "receiving": "Receiving",
+        "sending": "Sending"
       }
     }
   },
   "services": {
     "track_parcel": {
       "name": "Track parcel",
-      "description": "Start tracking a parcel (package) by its tracking code. The carrier is detected from the code unless you name it.",
+      "description": "Start tracking a parcel (package) by its tracking number. The carrier is detected from the number unless you name it.",
       "fields": {
         "config_entry_id": {
           "name": "Server",
           "description": "The Open Parcels server. Only needed when more than one is set up."
         },
-        "tracking_code": {
-          "name": "Tracking code",
-          "description": "The tracking code of the parcel."
+        "tracking_number": {
+          "name": "Tracking number",
+          "description": "The tracking number of the parcel."
         },
         "carrier": {
           "name": "Carrier",
@@ -123,15 +123,15 @@
     },
     "archive_parcel": {
       "name": "Archive parcel",
-      "description": "Archive a parcel so it no longer shows up. Name it by tracking code or by id.",
+      "description": "Archive a parcel so it no longer shows up. Name it by tracking number or by id.",
       "fields": {
         "config_entry_id": {
           "name": "Server",
           "description": "The Open Parcels server. Only needed when more than one is set up."
         },
-        "tracking_code": {
-          "name": "Tracking code",
-          "description": "The tracking code of the parcel."
+        "tracking_number": {
+          "name": "Tracking number",
+          "description": "The tracking number of the parcel."
         },
         "parcel_id": {
           "name": "Parcel id",
@@ -141,15 +141,15 @@
     },
     "refresh": {
       "name": "Refresh",
-      "description": "Re-read everything from the server. With a parcel, first run the sources that follow it.",
+      "description": "Re-read everything from the server. With a parcel, first run the connections that follow it.",
       "fields": {
         "config_entry_id": {
           "name": "Server",
           "description": "The Open Parcels server. Only needed when more than one is set up."
         },
-        "tracking_code": {
-          "name": "Tracking code",
-          "description": "Optional: the tracking code of a parcel to update first."
+        "tracking_number": {
+          "name": "Tracking number",
+          "description": "Optional: the tracking number of a parcel to update first."
         },
         "parcel_id": {
           "name": "Parcel id",
@@ -164,12 +164,12 @@
       "parcel_status_changed": "A parcel's status changed",
       "parcel_delivered": "A parcel was delivered",
       "parcel_delivery_time_changed": "A parcel's expected delivery time changed",
-      "outgoing_parcel_registered": "An outgoing parcel was registered",
-      "outgoing_parcel_delivered": "An outgoing parcel was delivered",
+      "sending_parcel_registered": "A sending parcel was registered",
+      "sending_parcel_delivered": "A sending parcel was delivered",
       "parcel_live_updated": "A parcel's live courier tracking changed",
       "parcel_removed": "A parcel was removed",
       "parcel_deleted": "A parcel was deleted",
-      "source_state_changed": "A source's state changed",
+      "connection_state_changed": "A connection's state changed",
       "return_created": "A return was created",
       "return_updated": "A return changed"
     }
@@ -179,7 +179,7 @@
       "event_stream": {
         "name": "Event stream"
       },
-      "source_problem": {
+      "connection_problem": {
         "name": "Problem"
       }
     },
@@ -195,7 +195,7 @@
     },
     "device_tracker": {
       "parcel": {
-        "name": "Parcel {barcode}"
+        "name": "Parcel {tracking_number}"
       }
     },
     "sensor": {
@@ -206,36 +206,36 @@
           "partially_delivered": "Partially delivered"
         }
       },
-      "incoming": {
-        "name": "Incoming parcels",
+      "receiving": {
+        "name": "Receiving parcels",
         "unit_of_measurement": "parcels"
       },
-      "outgoing": {
-        "name": "Outgoing parcels",
+      "sending": {
+        "name": "Sending parcels",
         "unit_of_measurement": "parcels"
       },
       "delivered": {
         "name": "Delivered parcels",
         "unit_of_measurement": "parcels"
       },
-      "outgoing_delivered": {
-        "name": "Outgoing delivered parcels",
+      "sending_delivered": {
+        "name": "Sending delivered parcels",
         "unit_of_measurement": "parcels"
       },
-      "incoming_parcels": {
-        "name": "Incoming parcels",
+      "receiving_parcels": {
+        "name": "Receiving parcels",
         "unit_of_measurement": "parcels"
       },
       "delivered_parcels": {
         "name": "Delivered parcels",
         "unit_of_measurement": "parcels"
       },
-      "outgoing_parcels": {
-        "name": "Outgoing parcels",
+      "sending_parcels": {
+        "name": "Sending parcels",
         "unit_of_measurement": "parcels"
       },
-      "outgoing_delivered_parcels": {
-        "name": "Outgoing delivered parcels",
+      "sending_delivered_parcels": {
+        "name": "Sending delivered parcels",
         "unit_of_measurement": "parcels"
       },
       "en_route_to_pickup_point": {
@@ -252,8 +252,8 @@
       "last_update": {
         "name": "Last successful update"
       },
-      "source_state": {
-        "name": "Source state",
+      "connection_state": {
+        "name": "Connection state",
         "state": {
           "ok": "OK",
           "needs_sign_in": "Needs sign-in",
@@ -279,7 +279,7 @@
       "message": "The carrier asked open-parcels to wait: {message}"
     },
     "sync_failed": {
-      "message": "Could not run the source: {error}"
+      "message": "Could not run the connection: {error}"
     },
     "calendar_failed": {
       "message": "Could not read the calendar: {error}"
@@ -294,7 +294,7 @@
       "message": "No parcel {parcel} is known."
     },
     "parcel_required": {
-      "message": "Name the parcel by tracking code or id."
+      "message": "Name the parcel by tracking number or id."
     },
     "request_refused": {
       "message": "The server refused the request: {error}"

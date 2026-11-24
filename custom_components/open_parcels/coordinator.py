@@ -25,6 +25,9 @@ from .const import (
     CONF_INCLUDE_HISTORY,
     CONF_ORDER_ENTITIES,
     CONF_RESYNC_MINUTES,
+    CONNECTION_REMOVED_EVENT,
+    CONNECTION_SNAPSHOT_EVENTS,
+    CONNECTION_STATE_EVENT,
     DEFAULT_INCLUDE_HISTORY,
     DEFAULT_ORDER_ENTITIES,
     DEFAULT_RESYNC_MINUTES,
@@ -42,36 +45,38 @@ from .const import (
     SERVER_EVENT_SUFFIXES,
     SETTINGS_UPDATED_EVENT,
     SIGNAL_LIVE_POSITION,
-    SOURCE_REMOVED_EVENT,
-    SOURCE_SNAPSHOT_EVENTS,
-    SOURCE_STATE_EVENT,
 )
-from .device import find_device, hub_identifier, source_device_info, source_identifier
+from .device import (
+    connection_device_info,
+    connection_identifier,
+    find_device,
+    hub_identifier,
+)
 from .merge import (
     GONE_EVENTS,
     CourierPosition,
     OpenParcelsData,
+    connection_of,
     drop_hidden,
     hidden,
+    merge_connection_removed,
+    merge_connection_snapshot,
+    merge_connection_state,
     merge_order_deleted,
     merge_order_updated,
     merge_parcel,
     merge_position,
     merge_return,
-    merge_source_removed,
-    merge_source_snapshot,
-    merge_source_state,
     position_from_live,
     reapply,
     return_of,
-    source_of,
 )
 from .parcels import (
     apply_delivered_filter,
     effective_status,
     is_delivered,
     order_key,
-    owner_source_id,
+    owner_connection_id,
     sort_parcels_by_ts,
     to_suite_parcel,
 )
@@ -85,8 +90,8 @@ _CALENDAR_EVENTS = frozenset(
         "parcel.registered",
         "parcel.delivered",
         "parcel.delivery_time_changed",
-        "parcel.outgoing_registered",
-        "parcel.outgoing_delivered",
+        "parcel.sending_registered",
+        "parcel.sending_delivered",
         "parcel.removed",
         "parcel.deleted",
         "parcel.status_changed",
@@ -112,7 +117,7 @@ class ParcelPosition:
 
 
 class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
-    """Holds sources, carriers and parcels; the event stream keeps them current."""
+    """Holds connections, carriers and parcels; the event stream keeps them current."""
 
     config_entry: ConfigEntry
 
@@ -203,47 +208,51 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
     def _suite_parcels(self) -> list[dict[str, Any]]:
         return list(self._suite_by_id().values())
 
-    def buckets(self, source_id: str | None = None) -> dict[str, list[dict[str, Any]]]:
-        """Split parcels into the suite's lists, optionally for one source only.
+    def buckets(
+        self, connection_id: str | None = None
+    ) -> dict[str, list[dict[str, Any]]]:
+        """Split parcels into the suite's lists, optionally for one connection only.
 
-        ``source_id`` of None means every parcel; pass a source id to get only
-        the parcels whose device is that source.
+        ``connection_id`` of None means every parcel; pass a connection id to get only
+        the parcels whose device is that connection.
         """
-        key = ("buckets", source_id)
+        key = ("buckets", connection_id)
         if (cached := self._views.get(key)) is None:
-            cached = self._views[key] = self._buckets(source_id)
+            cached = self._views[key] = self._buckets(connection_id)
         return cached
 
-    def _buckets(self, source_id: str | None) -> dict[str, list[dict[str, Any]]]:
+    def _buckets(self, connection_id: str | None) -> dict[str, list[dict[str, Any]]]:
         parcels = self._suite_parcels()
-        if source_id is not None:
-            parcels = [p for p in parcels if p["source_id"] == source_id]
+        if connection_id is not None:
+            parcels = [p for p in parcels if p["connection_id"] == connection_id]
         options = self.config_entry.options
-        incoming = [p for p in parcels if p["direction"] != "outgoing"]
-        outgoing = [p for p in parcels if p["direction"] == "outgoing"]
+        receiving = [p for p in parcels if p["direction"] != "sending"]
+        sending = [p for p in parcels if p["direction"] == "sending"]
         active_in = sort_parcels_by_ts(
-            [p for p in incoming if not p["delivered"]], "planned_from"
+            [p for p in receiving if not p["delivered"]], "expected_from"
         )
         active_out = sort_parcels_by_ts(
-            [p for p in outgoing if not p["delivered"]], "planned_from"
+            [p for p in sending if not p["delivered"]], "expected_from"
         )
         delivered_in = apply_delivered_filter(
             sort_parcels_by_ts(
-                [p for p in incoming if p["delivered"]], "delivered_at", descending=True
+                [p for p in receiving if p["delivered"]],
+                "delivered_at",
+                descending=True,
             ),
             options,
         )
         delivered_out = apply_delivered_filter(
             sort_parcels_by_ts(
-                [p for p in outgoing if p["delivered"]], "delivered_at", descending=True
+                [p for p in sending if p["delivered"]], "delivered_at", descending=True
             ),
             options,
         )
         return {
-            "incoming": active_in,
-            "outgoing": active_out,
+            "receiving": active_in,
+            "sending": active_out,
             "delivered": delivered_in,
-            "outgoing_delivered": delivered_out,
+            "sending_delivered": delivered_out,
             "en_route_to_pickup_point": [
                 p for p in active_in if p["pickup"] and p["status"] != "at_pickup_point"
             ],
@@ -260,7 +269,7 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
         buckets = self.buckets()
         return {
             str(p["id"])
-            for key in ("incoming", "outgoing")
+            for key in ("receiving", "sending")
             for p in buckets[key]
             if p.get("id") and p.get("status") in OPEN_STATUSES
         }
@@ -286,7 +295,7 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
         orders: dict[str, dict[str, Any]] = {}
         for raw in self._parcels.values():
             order = raw.get("order")
-            if not isinstance(order, dict) or raw.get("direction") == "outgoing":
+            if not isinstance(order, dict) or raw.get("direction") == "sending":
                 continue
             shop, number = (
                 str(order.get("shop") or ""),
@@ -300,14 +309,14 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
                     "order_number": number,
                     "items": list(order.get("items") or []),
                     "parcels": [],
-                    "source_id": owner_source_id(raw),
+                    "connection_id": owner_connection_id(raw),
                 },
             )
             entry["parcels"].append(
                 {
                     "id": raw.get("id"),
-                    "barcode": raw.get("barcode"),
-                    "name": raw.get("display_name") or raw.get("barcode"),
+                    "tracking_number": raw.get("tracking_number"),
+                    "name": raw.get("display_name") or raw.get("tracking_number"),
                     "status": effective_status(raw).value,
                     "delivered": is_delivered(raw),
                 }
@@ -351,12 +360,12 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
             stops_away=None,
         )
 
-    def device_id_for_source(self, source_id: str | None) -> str | None:
-        """Device registry id of a source's device, or the hub's for None."""
+    def device_id_for_connection(self, connection_id: str | None) -> str | None:
+        """Device registry id of a connection's device, or the hub's for None."""
         entry_id = self.config_entry.entry_id
         identifier = (
-            source_identifier(entry_id, source_id)
-            if source_id
+            connection_identifier(entry_id, connection_id)
+            if connection_id
             else hub_identifier(entry_id)
         )
         device = find_device(self.hass, entry_id, identifier)
@@ -375,8 +384,8 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
 
     async def _async_load(self) -> OpenParcelsData:
         try:
-            sources, carriers, parcels, returns = await asyncio.gather(
-                self.client.async_get_sources(),
+            connections, carriers, parcels, returns = await asyncio.gather(
+                self.client.async_get_connections(),
                 self.client.async_get_carriers(),
                 self.client.async_get_parcels(
                     include_history=self.include_history, limit=PARCEL_LIST_LIMIT
@@ -398,7 +407,7 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
         # From here on nothing awaits, so no message slips in between the replay
         # below and the coordinator taking this snapshot as its data.
         data = OpenParcelsData(
-            sources={str(s["id"]): s for s in sources if s.get("id")},
+            connections={str(s["id"]): s for s in connections if s.get("id")},
             carriers={
                 str(c["id"]): str(c.get("name") or c["id"])
                 for c in carriers
@@ -448,14 +457,14 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
 
     @callback
     def async_sync_registry(self) -> None:
-        """Create a device per source and drop devices and entities that are gone."""
+        """Create a device per connection and drop devices and entities that are gone."""
         if self.loaded_data is None:
             return
         entry = self.config_entry
         devices = dr.async_get(self.hass)
         hub = find_device(self.hass, entry.entry_id, hub_identifier(entry.entry_id))
-        for source in self.data.sources.values():
-            info = source_device_info(entry, source, self.data.carriers)
+        for connection in self.data.connections.values():
+            info = connection_device_info(entry, connection, self.data.carriers)
             device = devices.async_get_or_create(config_entry_id=entry.entry_id, **info)
             if hub is not None and device.via_device_id != hub.id:
                 devices.async_update_device(device.id, via_device_id=hub.id)
@@ -487,16 +496,16 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
             if parcel_id not in tracked:
                 entities.async_remove(entity.entity_id)
                 continue
-            # A parcel whose owning source was removed or changed moves to its new
+            # A parcel whose owning connection was removed or changed moves to its new
             # owner's device first, so removing the old device does not take it along.
-            owner = self.device_id_for_source(
-                owner_source_id(self.data.parcels.get(parcel_id) or {})
+            owner = self.device_id_for_connection(
+                owner_connection_id(self.data.parcels.get(parcel_id) or {})
             )
             if owner is not None and entity.device_id != owner:
                 entities.async_update_entity(entity.entity_id, device_id=owner)
 
         wanted = {
-            source_identifier(entry.entry_id, sid) for sid in self.data.sources
+            connection_identifier(entry.entry_id, sid) for sid in self.data.connections
         } | {hub_identifier(entry.entry_id)}
         # A device belongs to exactly one config entry, so one this entry no longer
         # wants is removed outright (remove_config_entry_id breaks in HA 2027.8).
@@ -599,13 +608,13 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
             return
         if self.loaded_data is None:
             return
-        if event == SOURCE_REMOVED_EVENT:
-            self._apply_source_removed(payload)
+        if event == CONNECTION_REMOVED_EVENT:
+            self._apply_connection_removed(payload)
             self._calendar_debouncer.async_schedule_call()
-        elif event in SOURCE_SNAPSHOT_EVENTS:
-            self._apply_source_snapshot(payload)
-        elif event == SOURCE_STATE_EVENT:
-            self._apply_source_event(payload)
+        elif event in CONNECTION_SNAPSHOT_EVENTS:
+            self._apply_connection_snapshot(payload)
+        elif event == CONNECTION_STATE_EVENT:
+            self._apply_connection_event(payload)
         elif event in (ORDER_UPDATED_EVENT, ORDER_DELETED_EVENT):
             self._apply_order_event(event, payload)
         elif event in RETURN_EVENT_SUFFIXES:
@@ -636,7 +645,7 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
         """Fire a bus event unless this exact change was fired already.
 
         A replayed message (its sequence already seen) and an event repeating the
-        change last fired for the same parcel or source are both dropped, so an
+        change last fired for the same parcel or connection are both dropped, so an
         automation runs once per change however often the server repeats it.
         """
         fingerprint = json.dumps(change, sort_keys=True, default=str)
@@ -656,80 +665,80 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
             )
 
     def _disabled_changed(self) -> None:
-        """A source was enabled or disabled: the server shows or hides its data.
+        """A connection was enabled or disabled: the server shows or hides its data.
 
         Hidden parcels go at once; parcels shown again only come with a reload.
         """
         drop_hidden(self.data, self.positions)
         self._want_refresh()
 
-    def _apply_source_event(self, payload: dict[str, Any]) -> None:
-        source = source_of(payload)
-        source_id = str(source.get("id") or "")
-        if source_id not in self.data.sources:
-            # A source this entry has not seen yet: pick it up with a resync.
+    def _apply_connection_event(self, payload: dict[str, Any]) -> None:
+        connection = connection_of(payload)
+        connection_id = str(connection.get("id") or "")
+        if connection_id not in self.data.connections:
+            # A connection this entry has not seen yet: pick it up with a resync.
             self._want_refresh()
-        elif merge_source_state(self.data, payload):
+        elif merge_connection_state(self.data, payload):
             self._disabled_changed()
         self._fire_once(
-            (f"{DOMAIN}_source_state_changed", source_id),
+            (f"{DOMAIN}_connection_state_changed", connection_id),
             [payload.get("old_state"), payload.get("new_state"), payload.get("detail")],
             {
-                "source_id": source_id,
-                "plugin": source.get("plugin"),
-                "label": source.get("label"),
+                "connection_id": connection_id,
+                "provider": connection.get("provider"),
+                "label": connection.get("label"),
                 "old_state": payload.get("old_state"),
                 "new_state": payload.get("new_state"),
                 "detail": payload.get("detail"),
-                "device_id": self.device_id_for_source(source_id or None),
-                "hub_device_id": self.device_id_for_source(None),
+                "device_id": self.device_id_for_connection(connection_id or None),
+                "hub_device_id": self.device_id_for_connection(None),
             },
         )
         self._publish()
 
-    def _apply_source_snapshot(self, payload: dict[str, Any]) -> None:
-        """Take a source as an event reports it: added, renamed, or just run.
+    def _apply_connection_snapshot(self, payload: dict[str, Any]) -> None:
+        """Take a connection as an event reports it: added, renamed, or just run.
 
-        The registry sync that follows creates a new source's device at once and
+        The registry sync that follows creates a new connection's device at once and
         renames an existing one; a name the user gave the device in Home Assistant
-        is kept, since that is stored apart. A source not seen before is also
+        is kept, since that is stored apart. A connection not seen before is also
         reloaded over REST for the fields the event does not carry (run times).
         """
-        if not source_of(payload).get("id"):
+        if not connection_of(payload).get("id"):
             return
-        new, crossed = merge_source_snapshot(self.data, payload)
+        new, crossed = merge_connection_snapshot(self.data, payload)
         if new:
             self._want_refresh()
         if crossed:
             self._disabled_changed()
         self._publish()
 
-    def _apply_source_removed(self, payload: dict[str, Any]) -> None:
-        """Drop a source the server deleted or merged, with its device.
+    def _apply_connection_removed(self, payload: dict[str, Any]) -> None:
+        """Drop a connection the server deleted or merged, with its device.
 
         Its parcels lose the link; the registry sync then removes the device and
         reloads the entry, so parcels it owned come back on their new owner.
         """
-        source = source_of(payload)
-        source_id = str(source.get("id") or "")
-        if not source_id:
+        connection = connection_of(payload)
+        connection_id = str(connection.get("id") or "")
+        if not connection_id:
             return
         # Read the device before the registry sync removes it.
-        device_id = self.device_id_for_source(source_id)
-        merge_source_removed(self.data, payload)
+        device_id = self.device_id_for_connection(connection_id)
+        merge_connection_removed(self.data, payload)
         merged_into = payload.get("merged_into")
-        if isinstance(merged_into, str) and merged_into not in self.data.sources:
+        if isinstance(merged_into, str) and merged_into not in self.data.connections:
             self._want_refresh()
         self._fire_once(
-            (f"{DOMAIN}_source_removed", source_id),
+            (f"{DOMAIN}_connection_removed", connection_id),
             merged_into,
             {
-                "source_id": source_id,
-                "plugin": source.get("plugin"),
-                "label": source.get("label"),
+                "connection_id": connection_id,
+                "provider": connection.get("provider"),
+                "label": connection.get("label"),
                 "merged_into": merged_into,
                 "device_id": device_id,
-                "hub_device_id": self.device_id_for_source(None),
+                "hub_device_id": self.device_id_for_connection(None),
             },
         )
         self._publish()
@@ -776,8 +785,8 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
             {
                 **return_summary(ret),
                 "return_id": return_id,
-                "device_id": self.device_id_for_source(owner_source_id(parcel)),
-                "hub_device_id": self.device_id_for_source(None),
+                "device_id": self.device_id_for_connection(owner_connection_id(parcel)),
+                "hub_device_id": self.device_id_for_connection(None),
             },
         )
         self._publish()
@@ -797,15 +806,15 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
             parcel,
             include_history=self.include_history,
         )
-        source_id = owner_source_id(parcel)
-        if source_id is None and gone and previous is not None:
-            # A removal's payload may no longer name the parcel's sources: the trigger still
-            # belongs on the device of the source that had it, not on the hub.
-            source_id = owner_source_id(previous)
-        if source_id and source_id not in self.data.sources:
+        connection_id = owner_connection_id(parcel)
+        if connection_id is None and gone and previous is not None:
+            # A removal's payload may no longer name the parcel's connections: the trigger still
+            # belongs on the device of the connection that had it, not on the hub.
+            connection_id = owner_connection_id(previous)
+        if connection_id and connection_id not in self.data.connections:
             self._want_refresh()
         if shown and event_type in SERVER_EVENT_SUFFIXES:
-            self._fire_parcel_event(event_type, payload, parcel, source_id)
+            self._fire_parcel_event(event_type, payload, parcel, connection_id)
         self._publish()
 
     def _fire_parcel_event(
@@ -813,7 +822,7 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
         event_type: str,
         payload: dict[str, Any],
         parcel: dict[str, Any],
-        source_id: str | None,
+        connection_id: str | None,
     ) -> None:
         parcel_id = str(parcel["id"])
         if event_type in GONE_EVENTS:
@@ -840,8 +849,8 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
             changes,
             parcel.get("status"),
             parcel.get("delivered_at"),
-            parcel.get("planned_from"),
-            parcel.get("planned_to"),
+            parcel.get("expected_from"),
+            parcel.get("expected_to"),
             live.get("state"),
             live.get("stops_away"),
         ]
@@ -851,8 +860,8 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
             {
                 **suite,
                 **changes,
-                "device_id": self.device_id_for_source(source_id),
-                "hub_device_id": self.device_id_for_source(None),
+                "device_id": self.device_id_for_connection(connection_id),
+                "hub_device_id": self.device_id_for_connection(None),
             },
         )
 

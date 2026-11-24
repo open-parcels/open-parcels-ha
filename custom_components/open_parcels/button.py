@@ -1,4 +1,4 @@
-"""Buttons: resync everything on the hub, run one source on its device."""
+"""Buttons: resync everything on the hub, run one connection on its device."""
 
 from __future__ import annotations
 
@@ -12,11 +12,11 @@ from .api import OpenParcelsApiError, OpenParcelsError
 from .const import DOMAIN
 from .coordinator import OpenParcelsCoordinator
 from .entity import (
+    OpenParcelsConnectionEntity,
     OpenParcelsEntity,
-    OpenParcelsSourceEntity,
     async_add_dynamic,
-    device_for_source,
-    source_ids,
+    connection_ids,
+    device_for_connection,
 )
 
 PARALLEL_UPDATES = 1
@@ -27,15 +27,15 @@ async def async_setup_entry(
     entry: OpenParcelsConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    """Set up the hub's refresh button and one sync button per source."""
+    """Set up the hub's refresh button and one sync button per connection."""
     coordinator = entry.runtime_data.coordinator
     async_add_entities([RefreshButton(coordinator)])
     async_add_dynamic(
         coordinator,
         entry,
         async_add_entities,
-        lambda: source_ids(coordinator),
-        lambda source_id: [SourceSyncButton(coordinator, source_id)],
+        lambda: connection_ids(coordinator),
+        lambda connection_id: [ConnectionSyncButton(coordinator, connection_id)],
     )
 
 
@@ -47,26 +47,26 @@ class RefreshButton(OpenParcelsEntity, ButtonEntity):
     def __init__(self, coordinator: OpenParcelsCoordinator) -> None:
         """Belongs to the hub."""
         super().__init__(coordinator, "refresh")
-        self._attr_device_info = device_for_source(coordinator.config_entry, None)
+        self._attr_device_info = device_for_connection(coordinator.config_entry, None)
 
     async def async_press(self) -> None:
         """Resync now."""
         await self.coordinator.async_request_refresh()
 
 
-class SourceSyncButton(OpenParcelsSourceEntity, ButtonEntity):
-    """Ask the server to run this source now."""
+class ConnectionSyncButton(OpenParcelsConnectionEntity, ButtonEntity):
+    """Ask the server to run this connection now."""
 
     _attr_translation_key = "refresh"
 
-    def __init__(self, coordinator: OpenParcelsCoordinator, source_id: str) -> None:
-        """Belongs to the source's device."""
-        super().__init__(coordinator, source_id, "sync")
+    def __init__(self, coordinator: OpenParcelsCoordinator, connection_id: str) -> None:
+        """Belongs to the connection's device."""
+        super().__init__(coordinator, connection_id, "sync")
 
     async def async_press(self) -> None:
-        """Run the source; its results arrive through the event stream."""
+        """Run the connection; its results arrive through the event stream."""
         try:
-            await self.coordinator.client.async_sync_source(self._source_id)
+            await self.coordinator.client.async_sync_connection(self._connection_id)
         except OpenParcelsError as err:
             # A captcha pause or the carrier's rate limit: the server says how long.
             if (

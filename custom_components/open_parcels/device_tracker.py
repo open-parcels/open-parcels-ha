@@ -21,7 +21,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from . import OpenParcelsConfigEntry
 from .const import CONF_API_TOKEN, SIGNAL_LIVE_POSITION
 from .coordinator import OpenParcelsCoordinator, ParcelPosition
-from .entity import OpenParcelsEntity, async_add_dynamic, device_for_source
+from .entity import OpenParcelsEntity, async_add_dynamic, device_for_connection
 from .picture import picture_url, picture_version
 
 PARALLEL_UPDATES = 0
@@ -81,16 +81,16 @@ class ParcelTracker(OpenParcelsEntity, TrackerEntity):
     )
 
     def __init__(self, coordinator: OpenParcelsCoordinator, parcel_id: str) -> None:
-        """Place the parcel on its source's device (the hub when it has none)."""
+        """Place the parcel on its connection's device (the hub when it has none)."""
         super().__init__(coordinator, f"parcel_{parcel_id}")
         self._parcel_id = parcel_id
         parcel = coordinator.suite_parcel(parcel_id) or {}
-        self._barcode = str(parcel.get("barcode") or parcel_id)
-        self._attr_translation_placeholders = {"barcode": self._barcode}
+        self._tracking_number = str(parcel.get("tracking_number") or parcel_id)
+        self._attr_translation_placeholders = {"tracking_number": self._tracking_number}
         # The base class types device info as None, but a tracker may belong
-        # to a device; the parcel belongs with its source.
-        self._attr_device_info = device_for_source(  # type: ignore[assignment]
-            coordinator.config_entry, parcel.get("source_id")
+        # to a device; the parcel belongs with its connection.
+        self._attr_device_info = device_for_connection(  # type: ignore[assignment]
+            coordinator.config_entry, parcel.get("connection_id")
         )
 
     async def async_added_to_hass(self) -> None:
@@ -124,14 +124,18 @@ class ParcelTracker(OpenParcelsEntity, TrackerEntity):
     @property
     def suggested_object_id(self) -> str | None:
         """Entity ids stay on the tracking code, whatever the parcel is called."""
-        return f"parcel {self._barcode}"
+        return f"parcel {self._tracking_number}"
 
     @property
     def name(self) -> str | None:
         """The server's display name (label or item names); "Parcel <code>" otherwise."""
         parcel = self.coordinator.suite_parcel(self._parcel_id) or {}
         display = parcel.get("display_name")
-        if isinstance(display, str) and display and display != parcel.get("barcode"):
+        if (
+            isinstance(display, str)
+            and display
+            and display != parcel.get("tracking_number")
+        ):
             return display
         return super().name  # type: ignore[return-value]
 

@@ -16,7 +16,7 @@ from .const import CONF_API_TOKEN
 TO_REDACT = {
     CONF_API_TOKEN,
     CONF_URL,
-    "barcode",
+    "tracking_number",
     # The label, the item titles or the tracking code, depending on a server setting.
     "display_name",
     "shop",
@@ -45,7 +45,7 @@ TO_REDACT = {
 async def async_get_config_entry_diagnostics(
     hass: HomeAssistant, entry: OpenParcelsConfigEntry
 ) -> dict[str, Any]:
-    """Return the entry, the sources and the parcels, redacted."""
+    """Return the entry, the connections and the parcels, redacted."""
     coordinator = entry.runtime_data.coordinator
     data = coordinator.data
     parcels = list(data.parcels.values()) if data else []
@@ -65,8 +65,8 @@ async def async_get_config_entry_diagnostics(
             else None
         ),
         "carriers": dict(data.carriers) if data else {},
-        "sources": async_redact_data(
-            list(data.sources.values()) if data else [], TO_REDACT
+        "connections": async_redact_data(
+            list(data.connections.values()) if data else [], TO_REDACT
         ),
         "parcel_count": len(parcels),
         "live_positions": len(coordinator.positions),

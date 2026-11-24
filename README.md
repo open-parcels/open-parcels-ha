@@ -17,9 +17,9 @@
 Parcel (package) tracking in Home Assistant from an [Open Parcels](https://github.com/open-parcels/open-parcels)
 server. One integration covers every carrier, shop and mailbox the server follows:
 
-- each **source** on the server (a carrier account, a tracking source, a shop or a mailbox) becomes
+- each **connection** on the server (a carrier account, a keyless tracking setup, a shop or a mailbox) becomes
   a Home Assistant device;
-- each **parcel** becomes an entity on its source's device.
+- each **parcel** becomes an entity on its connection's device.
 
 Changes arrive live over the server's event stream. A slow full resync runs every 30 minutes to
 catch anything the stream missed, however busy the stream is. The integration never polls in a
@@ -30,7 +30,7 @@ Coming from the per-carrier parcel integrations or the Parcel Aggregator? See
 
 ## Requirements
 
-- An Open Parcels server reachable from Home Assistant. This can be the Home Assistant app or a
+- An Open Parcels server 2.0 or newer (its glossary API names), reachable from Home Assistant. This can be the Home Assistant app or a
   container such as `http://192.168.1.10:4000`.
 - An API token with the scopes **read** and **write**. Create it in the Open Parcels web interface
   under Settings → API tokens. The integration never needs `admin`.
@@ -63,42 +63,42 @@ Assistant asks for a new one (reauthentication).
 
 | Entity | Key | State | Attributes |
 |---|---|---|---|
-| `sensor.open_parcels_incoming_parcels` | `incoming` | number of active incoming parcels | `by_carrier`, `parcels` |
-| `sensor.open_parcels_outgoing_parcels` | `outgoing` | active outgoing parcels | `by_carrier`, `parcels` |
-| `sensor.open_parcels_delivered_parcels` | `delivered` | recently delivered incoming parcels | `by_carrier`, `parcels` |
-| `sensor.open_parcels_outgoing_delivered_parcels` | `outgoing_delivered` | recently delivered outgoing parcels | `by_carrier`, `parcels` |
+| `sensor.open_parcels_receiving_parcels` | `receiving` | number of active receiving parcels | `by_carrier`, `parcels` |
+| `sensor.open_parcels_sending_parcels` | `sending` | active sending parcels | `by_carrier`, `parcels` |
+| `sensor.open_parcels_delivered_parcels` | `delivered` | recently delivered receiving parcels | `by_carrier`, `parcels` |
+| `sensor.open_parcels_sending_delivered_parcels` | `sending_delivered` | recently delivered sending parcels | `by_carrier`, `parcels` |
 | `sensor.open_parcels_en_route_to_pickup_point` | `en_route_to_pickup_point` | heading for a pickup point | `by_carrier`, `parcels` |
 | `sensor.open_parcels_awaiting_pickup` | `awaiting_pickup` | ready to collect | `by_carrier`, `parcels` |
-| `sensor.open_parcels_next_delivery` | `next_delivery` | earliest `planned_from` (timestamp) | `barcode`, `sender`, `receiver`, `by_carrier`, `parcel` |
+| `sensor.open_parcels_next_delivery` | `next_delivery` | earliest `expected_from` (timestamp) | `tracking_number`, `sender`, `receiver`, `by_carrier`, `parcel` |
 | `sensor.open_parcels_last_successful_update` | `last_update` | last full resync (diagnostic) | |
 | `sensor.open_parcels_open_returns` | `open_returns` | returns still going on (servers with returns) | `returns`: order number, shop, items, status, `return_by`, drop-off options, `free`, cost, label URL |
 | `calendar.open_parcels_deliveries` | `deliveries` | next expected delivery | the same entries as the server's calendar and ICS feed; a return's last day reads "Return by: <item or shop>" with its drop-off options and cost |
 | `button.open_parcels_refresh` | `refresh` | | resyncs everything now |
 | `binary_sensor.open_parcels_event_stream` | `event_stream` | event stream connected (diagnostic) | `events_received` |
 
-Parcels that no source follows (tracked by code only) live on the hub device.
+Parcels that no connection follows (tracked by number only) live on the hub device.
 
-### One device per source, e.g. "DHL Germany (abc123)"
+### One device per connection, e.g. "DHL Germany (abc123)"
 
-The device is named `<carrier> <source label>`. When the label already starts with the carrier's
+The device is named `<carrier> <connection label>`. When the label already starts with the carrier's
 name, the name is not repeated. It is linked to the hub (`via_device`).
 
 | Entity | State |
 |---|---|
-| `sensor.<device>_incoming_parcels`, `_en_route_to_pickup_point`, `_awaiting_pickup`, `_delivered_parcels`, `_outgoing_parcels`, `_outgoing_delivered_parcels` | count, with `by_carrier` and `parcels` |
-| `sensor.<device>_next_delivery` | earliest expected delivery of this source |
-| `sensor.<device>_last_successful_update` | the source's last successful run on the server (diagnostic) |
-| `sensor.<device>_source_state` | `ok`, `idle`, `needs_sign_in`, `error` or `disabled` (diagnostic), with `detail`, `plugin`, `kind`, `last_run_at`, `next_run_at`, `last_ok_at` |
-| `binary_sensor.<device>_problem` | on while the source needs a sign-in or fails (diagnostic) |
-| `button.<device>_refresh` | asks the server to run this source now |
-| `device_tracker.<device>_parcel_<barcode>` | one per open parcel (announced, in transit, out for delivery, at a pickup point, returning, problem). State: the status key. On the map once its position is known: the live courier, else the latest scan with coordinates. Delivered and finished parcels get no entity; they are listed in the list sensors (`parcel_ids`, `parcels`). Named by the server's *Default parcel label* setting (its label, item names or the tracking code; entity ids always use the code). Entity picture: a grid of its item pictures (1, 2×2 or 3×3), served by Home Assistant under a signed address. |
+| `sensor.<device>_receiving_parcels`, `_en_route_to_pickup_point`, `_awaiting_pickup`, `_delivered_parcels`, `_sending_parcels`, `_sending_delivered_parcels` | count, with `by_carrier` and `parcels` |
+| `sensor.<device>_next_delivery` | earliest expected delivery of this connection |
+| `sensor.<device>_last_successful_update` | the connection's last successful run on the server (diagnostic) |
+| `sensor.<device>_connection_state` | `ok`, `idle`, `needs_sign_in`, `error` or `disabled` (diagnostic), with `detail`, `provider`, `kind`, `last_run_at`, `next_run_at`, `last_ok_at` |
+| `binary_sensor.<device>_problem` | on while the connection needs a sign-in or fails (diagnostic) |
+| `button.<device>_refresh` | asks the server to run this connection now |
+| `device_tracker.<device>_parcel_<tracking_number>` | one per open parcel (announced, in transit, out for delivery, at a pickup point, returning, problem). State: the status key. On the map once its position is known: the live courier, else the latest scan with coordinates. Delivered and finished parcels get no entity; they are listed in the list sensors (`parcel_ids`, `parcels`). Named by the server's *Default parcel label* setting (its label, item names or the tracking number; entity ids always use the number). Entity picture: a grid of its item pictures (1, 2×2 or 3×3), served by Home Assistant under a signed address. |
 | `sensor.<device>_order_<shop>_<number>` | optional (*Order entities*): one per open order. State `in_progress` or `partially_delivered`; attributes: shop, order number, counts, `items` (with the code of the parcel carrying each, or null) and `parcels`. |
 
-A parcel belongs to the source that follows it as its primary source, then a hand-off, then a
+A parcel belongs to the connection that follows it as its primary, then a hand-off, then a
 mailbox.
 
-When a source is disabled on the server, the server hides the parcels and orders only it
-follows; they disappear from Home Assistant too and come back when the source is enabled again.
+When a connection is disabled on the server, the server hides the parcels and orders only it
+follows; they disappear from Home Assistant too and come back when the connection is enabled again.
 
 ### Parcel trackers
 
@@ -113,11 +113,11 @@ which zones the courier is in (that is kept out of history, see *What the record
 states, use the list sensors or the status in the bus events.
 
 The attributes start with the suite's parcel keys, in the suite's order: `carrier` (display
-name), `barcode`, `sender`, `receiver`, `status`, `raw_status`, `delivered`, `delivered_at`,
-`planned_from`, `planned_to`, `pickup`, `pickup_point`, `url`, `weight`, `dimensions`, `history`,
+name), `tracking_number`, `sender`, `receiver`, `status`, `raw_status`, `delivered`, `delivered_at`,
+`expected_from`, `expected_to`, `pickup`, `pickup_point`, `url`, `weight`, `dimensions`, `history`,
 `raw`. Then come the server's additions: `id`, `carrier_id`, `direction`, `label`,
 `carrier_status`, `manual_status`, `items`, `order`, `live` (without coordinates), `lookup`,
-`source_id`, `first_seen_at`, `updated_at`.
+`connection_id`, `first_seen_at`, `updated_at`.
 
 - `weight`, `dimensions` and `raw` are always `null`: the server does not publish them.
 - `history` is `null` unless the *Include status history* option is on.
@@ -138,13 +138,13 @@ included.
 ### What the recorder keeps
 
 Kept out of history: the trackers' `sender`, `receiver`, `url`, `pickup_point`, `display_name`,
-`label`, `items`, `order`, `history`, `live` and `lookup`; the next-delivery sensors' `barcode`,
+`label`, `items`, `order`, `history`, `live` and `lookup`; the next-delivery sensors' `tracking_number`,
 `sender`, `receiver` and `parcel`; the list sensors' `parcels`; the order sensors' `shop`,
 `order_number`, `items` and `parcels`; the returns sensor's `returns`; the calendar's
-`description` and `location`. Still recorded: states, the trackers' `barcode` and status keys,
+`description` and `location`. Still recorded: states, the trackers' `tracking_number` and status keys,
 and the calendar's `message` (the next entry's title).
 
-Entity ids carry the tracking code (`device_tracker.<device>_parcel_<code>`) and order sensor
+Entity ids carry the tracking number (`device_tracker.<device>_parcel_<tracking_number>`) and order sensor
 names the order number, so both appear in the states, statistics and logbook tables. They are
 kept so automations written for earlier versions keep working.
 
@@ -161,37 +161,37 @@ These server events are fired on the Home Assistant bus as `open_parcels_<type>`
 | `parcel.status_changed` | `open_parcels_parcel_status_changed` (`old_status`, `new_status`) |
 | `parcel.delivered` | `open_parcels_parcel_delivered` (the only event for the hop to delivered) |
 | `parcel.delivery_time_changed` | `open_parcels_parcel_delivery_time_changed` (`old_*`, `new_*`) |
-| `parcel.outgoing_registered` | `open_parcels_outgoing_parcel_registered` |
-| `parcel.outgoing_delivered` | `open_parcels_outgoing_parcel_delivered` |
+| `parcel.sending_registered` | `open_parcels_sending_parcel_registered` |
+| `parcel.sending_delivered` | `open_parcels_sending_parcel_delivered` |
 | `parcel.live_updated` | `open_parcels_parcel_live_updated` |
 | `parcel.removed` | `open_parcels_parcel_removed` |
 | `parcel.deleted` | `open_parcels_parcel_deleted` (deleted on the server, or merged into another parcel: `merged_into`) |
-| `source.state_changed` | `open_parcels_source_state_changed` (`source_id`, `plugin`, `label`, `old_state`, `new_state`, `detail`) |
+| `connection.state_changed` | `open_parcels_connection_state_changed` (`connection_id`, `provider`, `label`, `old_state`, `new_state`, `detail`) |
 | `return.created` | `open_parcels_return_created` (`return_id` plus the `returns` attribute's fields) |
 | `return.updated` | `open_parcels_return_updated` (the same fields) |
-| `source.removed` | `open_parcels_source_removed` (`source_id`, `plugin`, `label`, `merged_into`); bus event only, no device trigger |
+| `connection.removed` | `open_parcels_connection_removed` (`connection_id`, `provider`, `label`, `merged_into`); bus event only, no device trigger |
 
 Other server events update the data without a bus event of their own: `parcel.live_position`
 (the courier's position), `parcel.location_changed` (a parcel placed at a new scan),
-`source.added`, `source.updated` and `source.run_finished` (a source's name and state),
+`connection.added`, `connection.updated` and `connection.run_finished` (a connection's name and state),
 `order.updated` and `order.deleted` (the order on the parcels), and `settings.updated` (reloads
 everything).
 
 Each change fires once. A message the server replays after a reconnect, or the same change sent
 again, does not fire a second time.
 
-A deleted parcel or source disappears at once: its entities, and the source's device, are removed
-from the registries. Parcels the removed source owned move to their next source's device (or the
+A deleted parcel or connection disappears at once: its entities, and the connection's device, are removed
+from the registries. Parcels the removed connection owned move to their next connection's device (or the
 hub). The periodic resync removes anything else the server no longer has.
 
 Parcel events carry the parcel attributes listed above (without `raw`, `items`, `order`,
 `history`, `live` and `lookup`, which would fill the recorder's event tables), the server's `old_*` and
-`new_*` fields, `device_id` (the parcel's source device) and `hub_device_id`. Device triggers of
-the same names exist on every device: a source device's triggers fire for its own parcels, the
+`new_*` fields, `device_id` (the parcel's connection device) and `hub_device_id`. Device triggers of
+the same names exist on every device: a connection device's triggers fire for its own parcels, the
 hub's for all of them.
 
 - Events missed while the stream was disconnected are replayed with `Last-Event-ID`. The server
-  keeps them for 24 hours (short-lived courier and source-run events for 15 minutes). After a
+  keeps them for 24 hours (short-lived courier and connection-run events for 15 minutes). After a
   longer outage it asks for a full reload instead, and the missed events are not fired. After
   every reconnect one reload follows anyway, so a gap cannot stay unnoticed.
 - Events from while Home Assistant was not running are not replayed: like the per-carrier
@@ -201,9 +201,9 @@ hub's for all of them.
 
 | Service | Fields | Does |
 |---|---|---|
-| `open_parcels.track_parcel` | `tracking_code`, optional `carrier`, `label`, `direction`, `config_entry_id` | starts tracking a code; returns `parcel_id` and `carrier` |
-| `open_parcels.archive_parcel` | `tracking_code` or `parcel_id`, optional `config_entry_id` | archives the parcel on the server |
-| `open_parcels.refresh` | optional `tracking_code` or `parcel_id`, `config_entry_id` | runs the sources that follow the parcel (if given), then resyncs |
+| `open_parcels.track_parcel` | `tracking_number`, optional `carrier`, `label`, `direction`, `config_entry_id` | starts tracking a number; returns `parcel_id` and `carrier` |
+| `open_parcels.archive_parcel` | `tracking_number` or `parcel_id`, optional `config_entry_id` | archives the parcel on the server |
+| `open_parcels.refresh` | optional `tracking_number` or `parcel_id`, `config_entry_id` | runs the connections that follow the parcel (if given), then resyncs |
 
 `config_entry_id` is only needed when more than one server is set up.
 
@@ -217,8 +217,8 @@ hub's for all of them.
 
 ## Diagnostics
 
-The diagnostics download redacts the token, the URL, tracking codes, parcel display names, names,
-addresses, shops and order numbers, item titles, place names, source labels and configuration,
+The diagnostics download redacts the token, the URL, tracking numbers, parcel display names, names,
+addresses, shops and order numbers, item titles, place names, connection labels and configuration,
 and coordinates.
 
 ## Development

@@ -11,7 +11,7 @@ from custom_components.open_parcels.parcels import (
     effective_status,
     is_delivered,
     next_delivery,
-    owner_source_id,
+    owner_connection_id,
     parse_iso,
     sort_parcels_by_ts,
     strip_live,
@@ -42,21 +42,36 @@ def test_manual_status_wins() -> None:
         {**payloads.parcels()[0], "manual_status": "delivered"}, include_history=False
     )
     assert parcel["delivered"] is True
-    assert parcel["planned_from"] is None
+    assert parcel["expected_from"] is None
     assert parcel["carrier_status"] == "out_for_delivery"
 
 
-def test_owner_source_prefers_primary() -> None:
+def test_glossary_names_reach_the_suite_parcel() -> None:
+    """The server's tracking_number, expected_* and expected_days become attributes."""
+    days = {"from": "2030-01-02", "to": "2030-01-03"}
+    parcel = to_suite_parcel(
+        {**payloads.parcels()[0], "expected_days": days, "direction": "sending"},
+        include_history=False,
+    )
+    assert parcel["tracking_number"] == "TEST0000000001"
+    assert parcel["expected_from"] == "2030-01-02T12:00:00.000Z"
+    assert parcel["expected_days"] == days
+    assert parcel["direction"] == "sending"
+    assert "barcode" not in parcel
+    assert "planned_from" not in parcel
+
+
+def test_owner_connection_prefers_primary() -> None:
     """Primary beats hand-off beats mail; none means the hub."""
     refs = [
-        {"source_id": "m", "role": "mail"},
-        {"source_id": "h", "role": "handoff"},
-        {"source_id": "p", "role": "primary"},
+        {"connection_id": "m", "role": "mail"},
+        {"connection_id": "h", "role": "handoff"},
+        {"connection_id": "p", "role": "primary"},
     ]
-    assert owner_source_id({"sources": refs}) == "p"
-    assert owner_source_id({"sources": refs[:2]}) == "h"
-    assert owner_source_id({"sources": refs[:1]}) == "m"
-    assert owner_source_id({"sources": ["junk"]}) is None
+    assert owner_connection_id({"connections": refs}) == "p"
+    assert owner_connection_id({"connections": refs[:2]}) == "h"
+    assert owner_connection_id({"connections": refs[:1]}) == "m"
+    assert owner_connection_id({"connections": ["junk"]}) is None
 
 
 def test_strip_live() -> None:
@@ -104,11 +119,11 @@ def test_sorting_and_filters() -> None:
 
 
 def test_counts_and_next_delivery() -> None:
-    """Per-carrier counts and earliest planned_from."""
+    """Per-carrier counts and earliest expected_from."""
     parcels = [
-        {"carrier": "DHL", "planned_from": "2030-01-03T00:00:00Z"},
-        {"carrier": "DHL", "planned_from": "2030-01-02T00:00:00Z"},
-        {"carrier": None, "planned_from": None},
+        {"carrier": "DHL", "expected_from": "2030-01-03T00:00:00Z"},
+        {"carrier": "DHL", "expected_from": "2030-01-02T00:00:00Z"},
+        {"carrier": None, "expected_from": None},
     ]
     assert count_by_carrier(parcels) == {"DHL": 2, "Unknown": 1}
     value, parcel, by_carrier = next_delivery(parcels)
