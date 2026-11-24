@@ -15,6 +15,7 @@ from custom_components.open_parcels import stream as stream_module
 from custom_components.open_parcels.api import (
     OpenParcelsAuthError,
     OpenParcelsConnectionError,
+    OpenParcelsScopeError,
 )
 from custom_components.open_parcels.const import (
     STREAM_BACKOFF_INITIAL_SECONDS,
@@ -130,14 +131,22 @@ async def test_a_failing_message_is_skipped_and_the_stream_goes_on(
     assert stream.calls == [None]
 
 
+@pytest.mark.parametrize(
+    "error",
+    [
+        OpenParcelsAuthError(401, "unauthorized", None),
+        OpenParcelsScopeError(403, "forbidden", "missing scope read"),
+    ],
+)
 async def test_refused_token_starts_reauth(
     hass: HomeAssistant,
     loaded: MockConfigEntry,
     stream: FakeStream,
     delays: list[float],
+    error: Exception,
 ) -> None:
-    """A 401 on the stream stops it and asks for a new token."""
-    stream.open_error = OpenParcelsAuthError(401, "unauthorized", None)
+    """A 401 or a 403 on the stream stops it and asks for a new token (HA-012)."""
+    stream.open_error = error
     stream.queue.put_nowait(None)
     await _settle(hass)
     assert hass.states.get("binary_sensor.open_parcels_event_stream").state == "off"
@@ -212,3 +221,24 @@ async def test_server_resync_reloads_and_resets_the_id(
     stream.queue.put_nowait(OpenParcelsConnectionError("reset"))
     await _settle(hass)
     assert stream.calls[-1] == "40"
+
+
+async def test_down_and_back_are_logged_once(
+    hass: HomeAssistant,
+    loaded: MockConfigEntry,
+    stream: FakeStream,
+    delays: list[float],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """One info line when the stream goes down, one when it is back (HA-012)."""
+    stream.push("vocab.unknown", json.dumps({}), "7")
+    stream.queue.put_nowait(OpenParcelsConnectionError("reset"))
+    await _settle(hass)
+    stream.open_error = OpenParcelsConnectionError("refused")
+    stream.queue.put_nowait(OpenParcelsConnectionError("reset again"))
+    await _settle(hass)
+    infos = [r.getMessage() for r in caplog.records if r.levelname == "INFO"]
+    down = [m for m in infos if "event stream is down" in m]
+    back = [m for m in infos if "connected again" in m]
+    assert len(down) == 2
+    assert len(back) == 2

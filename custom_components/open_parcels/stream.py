@@ -9,7 +9,12 @@ import random
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
-from .api import OpenParcelsAuthError, OpenParcelsError, SseMessage
+from .api import (
+    OpenParcelsAuthError,
+    OpenParcelsError,
+    OpenParcelsScopeError,
+    SseMessage,
+)
 from .const import (
     STREAM_BACKOFF_INITIAL_SECONDS,
     STREAM_BACKOFF_MAX_SECONDS,
@@ -33,14 +38,39 @@ def jittered(delay: float) -> float:
     return delay * (1 + random.random() / 5)
 
 
+class _Health:
+    """Logs once when the stream goes down and once when it is back."""
+
+    def __init__(self) -> None:
+        self.down = False
+
+    def failed(self, reason: object) -> None:
+        if not self.down:
+            _LOGGER.info("The event stream is down (%s); reconnecting", reason)
+            self.down = True
+        else:
+            _LOGGER.debug("Event stream error: %s", reason)
+
+    def opened(self) -> None:
+        if self.down:
+            _LOGGER.info("The event stream is connected again")
+            self.down = False
+
+
 class _Attempt:
     """One connection attempt: notes when the server accepted it."""
 
     def __init__(
-        self, hass: HomeAssistant, coordinator: OpenParcelsCoordinator, *, resync: bool
+        self,
+        hass: HomeAssistant,
+        coordinator: OpenParcelsCoordinator,
+        health: _Health,
+        *,
+        resync: bool,
     ) -> None:
         self._hass = hass
         self._coordinator = coordinator
+        self._health = health
         self._resync = resync
         self.opened_at: float | None = None
 
@@ -53,6 +83,7 @@ class _Attempt:
         unless `resync` already started one.
         """
         self.opened_at = self._hass.loop.time()
+        self._health.opened()
         self._coordinator.async_set_stream_connected(True)
         if self._resync:
             # Directly, not through the debouncer: its cooldown would hold back the
@@ -85,22 +116,25 @@ async def async_run_stream(
     (the id was too old, or the server's database was reset) also reloads.
     """
     delay = STREAM_BACKOFF_INITIAL_SECONDS
+    health = _Health()
     while True:
         last_id = coordinator.last_event_id
-        attempt = _Attempt(hass, coordinator, resync=last_id is None)
+        attempt = _Attempt(hass, coordinator, health, resync=last_id is None)
         try:
             async for message in coordinator.client.async_stream_events(
                 last_id, STREAM_READ_TIMEOUT_SECONDS, attempt.on_open
             ):
                 _handle(coordinator, message)
-            _LOGGER.debug("The event stream closed; reconnecting")
-        except OpenParcelsAuthError:
+            health.failed("closed by the server")
+        except (OpenParcelsAuthError, OpenParcelsScopeError) as err:
+            # Refused for good (401), or the token lost the read scope (403): retrying
+            # cannot help, a new token can.
             coordinator.async_set_stream_connected(False)
-            _LOGGER.warning("The event stream refused the API token")
+            _LOGGER.warning("The event stream refused the API token: %s", err)
             entry.async_start_reauth(hass)
             return
         except OpenParcelsError as err:
-            _LOGGER.debug("Event stream error: %s", err)
+            health.failed(err)
         except asyncio.CancelledError:
             coordinator.async_set_stream_connected(False)
             raise
