@@ -14,10 +14,10 @@
 
 # Open Parcels for Home Assistant
 
-Parcel (package) tracking in Home Assistant from an [Open Parcels](https://github.com/open-parcels/open-parcels)
-server. One integration covers every carrier, shop and mailbox the server follows:
+Parcel tracking in Home Assistant from an [Open Parcels](https://github.com/open-parcels/open-parcels)
+server. One integration covers every carrier, shop and inbox the server follows:
 
-- each **connection** on the server (a carrier account, a keyless tracking setup, a shop or a mailbox) becomes
+- each **connection** on the server (a carrier account, a keyless tracking setup, a shop or an inbox) becomes
   a Home Assistant device;
 - each **parcel** becomes an entity on its connection's device.
 
@@ -96,11 +96,11 @@ name, the name is not repeated. It is linked to the hub (`via_device`).
 | `sensor.<device>_connection_state` | `ok`, `idle`, `needs_sign_in`, `error` or `disabled` (diagnostic), with `detail`, `provider`, `kind`, `last_run_at`, `next_run_at`, `last_ok_at` |
 | `binary_sensor.<device>_problem` | on while the connection needs a sign-in or fails (diagnostic) |
 | `button.<device>_refresh` | asks the server to run this connection now |
-| `device_tracker.<device>_parcel_<tracking_number>` | one per open parcel (announced, in transit, out for delivery, at a pickup point, returning, problem). State: the status key. On the map once its position is known: the live courier, else the latest scan with coordinates. Delivered and finished parcels get no entity; they are listed in the list sensors (`parcel_ids`, `parcels`). Named by the server's *Default parcel label* setting (its label, item names or the tracking number; entity ids always use the number). Entity picture: a grid of its item pictures (1, 2×2 or 3×3), served by Home Assistant under a signed address. |
+| `device_tracker.<device>_parcel_<tracking_number>` | one per open parcel (announced, in transit, out for delivery, at a pickup point, returning, problem). State: the status key. On the map once its position is known: the live courier, else the latest event with coordinates. Delivered and finished parcels get no entity; they are listed in the list sensors (`parcel_ids`, `parcels`). Named by the server's *Default parcel label* setting (its label, item names or the tracking number; entity ids always use the number). Entity picture: a grid of its item pictures (1, 2×2 or 3×3), served by Home Assistant under a signed address. |
 | `sensor.<device>_order_<shop>_<number>` | optional (*Order entities*): one per open order. State `in_progress` or `partially_delivered`; attributes: shop, order number, `order_id`, `order_status` (the server's order status), `total` (`amount`, `currency`, `partial`: the shop's stated total, a payment receipt's, or the sum of the priced lines), counts, `items` (with the code of the parcel carrying each, or null) and `parcels`. |
 
 A parcel belongs to the connection that follows it as its primary, then a hand-off, then a
-mailbox.
+inbox.
 
 When a connection is disabled on the server, the server hides the parcels and orders only it
 follows; they disappear from Home Assistant too and come back when the connection is enabled again.
@@ -133,7 +133,7 @@ removed; delivered parcels stay in the list sensors (see *Delivered parcels* in 
 ### Parcel positions
 
 A parcel tracker points at the courier **right now** while a live session runs, otherwise at the
-latest carrier scan that came with coordinates (`position_source`: `courier` or `scan`). Without
+latest carrier event that came with coordinates (`position_source`: `courier` or `scan`). Without
 either it has no coordinates and Home Assistant leaves it off the map; the entity stays, with its
 status as the state. Latitude, longitude, accuracy, the fix time, stops-away and the zones Home
 Assistant derives from the position (`in_zones`) are kept out of the recorder, so Home Assistant
@@ -179,7 +179,7 @@ These server events are fired on the Home Assistant bus as `open_parcels_<type>`
 | `backup.finished` with `ok: false` | `open_parcels_backup_failed` (`reason`, `at`, `error`, `hub_device_id`); bus event only. Every result also updates the last backup sensor |
 
 Other server events update the data without a bus event of their own: `parcel.live_position`
-(the courier's position), `parcel.location_changed` (a parcel placed at a new scan),
+(the courier's position), `parcel.location_changed` (a parcel placed at a new event),
 `connection.added`, `connection.updated` and `connection.run_finished` (a connection's name and state),
 `order.updated` and `order.deleted` (the order on the parcels), and `settings.updated` (reloads
 everything). A connection's state change, run or removal and every backup also re-read the

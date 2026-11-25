@@ -145,7 +145,7 @@
   "services": {
     "track_parcel": {
       "name": "Paket verfolgen",
-      "description": "Ein Paket anhand seiner Sendungsnummer verfolgen. Der Zusteller wird aus der Nummer erkannt, wenn du ihn nicht angibst.",
+      "description": "Ein Paket anhand seiner Sendungsnummer verfolgen. Der Paketdienst wird aus der Nummer erkannt, wenn du ihn nicht angibst.",
       "fields": {
         "config_entry_id": {
           "name": "Server",
@@ -156,8 +156,8 @@
           "description": "Die Sendungsnummer des Pakets."
         },
         "carrier": {
-          "name": "Zusteller",
-          "description": "Die Open-Parcels-Kennung des Zustellers, zum Beispiel dhl. Leer lassen zum Erkennen."
+          "name": "Paketdienst",
+          "description": "Die Open-Parcels-Kennung des Paketdienstes, zum Beispiel dhl. Leer lassen zum Erkennen."
         },
         "label": {
           "name": "Bezeichnung",
@@ -293,7 +293,7 @@
         "unit_of_measurement": "Pakete"
       },
       "en_route_to_pickup_point": {
-        "name": "Unterwegs zum Abholort",
+        "name": "Unterwegs zum Abholstelle",
         "unit_of_measurement": "Pakete"
       },
       "awaiting_pickup": {

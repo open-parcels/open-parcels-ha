@@ -172,7 +172,7 @@ class ParcelTracker(OpenParcelsEntity, TrackerEntity):
 
     @property
     def longitude(self) -> float | None:
-        """Longitude of the courier or the latest scan."""
+        """Longitude of the courier or the latest event."""
         position = self._position
         return position.longitude if position else None
 
