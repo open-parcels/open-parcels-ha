@@ -50,9 +50,9 @@ Then go to **Settings → Devices & services → Add integration → Open Parcel
 URL and the token.
 
 **Discovery:**
-- The Open Parcels Home Assistant app announces itself (`discovery: [open_parcels]`). If the app
+- The Open Parcels Home Assistant app announces itself (`discovery: [open_parcels]`). If the HA app
   passes a working `api_token` in its discovery data, you only confirm adding it. Otherwise you are
-  asked for a token. When the app announces itself again, the entry takes its current address and
+  asked for a token. When the HA app announces itself again, the entry takes its current address and
   token.
 - There is no network (zeroconf) discovery: the server does not advertise itself.
 

@@ -42,7 +42,7 @@
       },
       "hassio_confirm": {
         "title": "Open Parcels hinzufügen",
-        "description": "Die Open-Parcels-App unter {url} bietet ihr API-Token an. Diesen Server hinzufügen?"
+        "description": "Die Open-Parcels-HA-App unter {url} bietet ihr API-Token an. Diesen Server hinzufügen?"
       }
     },
     "error": {
@@ -56,7 +56,7 @@
       "already_configured": "Dieser Open-Parcels-Server ist bereits eingerichtet.",
       "reauth_successful": "Das API-Token wurde aktualisiert.",
       "reconfigure_successful": "Die Verbindung wurde aktualisiert.",
-      "invalid_discovery_info": "Den Erkennungsdaten der App fehlen Host oder Port."
+      "invalid_discovery_info": "Den Erkennungsdaten der HA-App fehlen Host oder Port."
     }
   },
   "options": {
@@ -91,6 +91,54 @@
       "options": {
         "receiving": "Empfangen",
         "sending": "Versenden"
+      }
+    },
+    "calendar_text": {
+      "options": {
+        "parcel": "Paket",
+        "delivered": "Zugestellt: {title}",
+        "return_by": "Zurücksenden bis: {title}",
+        "order": "Bestellung",
+        "status": "Status",
+        "label": "Etikett",
+        "drop_off": "Abgabe",
+        "free": "Kostenlose Rücksendung",
+        "costs_money": "Rücksendung kostenpflichtig",
+        "costs": "Rücksendung kostet {amount}"
+      }
+    },
+    "drop_off_kind": {
+      "options": {
+        "shop": "Shop",
+        "parcel_locker": "Paketautomat",
+        "post_office": "Postfiliale",
+        "pickup": "Abholung",
+        "any": "Beliebige Abgabestelle"
+      }
+    },
+    "parcel_status": {
+      "options": {
+        "registered": "Angemeldet",
+        "in_transit": "Unterwegs",
+        "out_for_delivery": "In Zustellung",
+        "at_pickup_point": "An der Abholstelle",
+        "delivered": "Zugestellt",
+        "returning": "Auf dem Rückweg",
+        "problem": "Problem",
+        "unknown": "Unbekannt"
+      }
+    },
+    "return_status": {
+      "options": {
+        "requested": "Rücksendung angefragt",
+        "label_created": "Etikett bereit",
+        "dropped_off": "Abgegeben",
+        "in_transit": "Auf dem Rückweg",
+        "received": "Beim Shop eingegangen",
+        "refunded": "Erstattet",
+        "rejected": "Abgelehnt",
+        "cancelled": "Storniert",
+        "expired": "Frist abgelaufen"
       }
     }
   },

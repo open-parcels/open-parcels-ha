@@ -180,7 +180,8 @@ def merge_connection_state(data: OpenParcelsData, payload: Mapping[str, Any]) ->
         return False
     old = known.get("state")
     known["state"] = payload.get("new_state", old)
-    known["state_detail"] = payload.get("detail")
+    known["state_reason"] = payload.get("state_reason")
+    known["carrier_message"] = payload.get("carrier_message")
     return _crosses_disabled(old, known["state"])
 
 
@@ -205,7 +206,8 @@ def merge_connection_snapshot(
             known[key] = connection[key]
     if "state" in payload:
         known["state"] = payload["state"]
-        known["state_detail"] = payload.get("detail")
+        known["state_reason"] = payload.get("state_reason")
+        known["carrier_message"] = payload.get("carrier_message")
     return new, _crosses_disabled(old, known.get("state")) and not new
 
 

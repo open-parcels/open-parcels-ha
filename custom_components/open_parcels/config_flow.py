@@ -135,7 +135,7 @@ class OpenParcelsConfigFlow(ConfigFlow, domain=DOMAIN):
     async def _async_discovered(self, url: str, token: str | None) -> ConfigFlowResult:
         url = normalize_url(url)
         await self.async_set_unique_id(url)
-        # The app hands over its token again whenever it announces itself: keep the
+        # The HA app hands over its token again whenever it announces itself: keep the
         # entry on the token it uses now (the entry reloads when either changed).
         updates = {CONF_URL: url}
         if token:
@@ -151,7 +151,7 @@ class OpenParcelsConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_hassio(
         self, discovery_info: HassioServiceInfo
     ) -> ConfigFlowResult:
-        """The Open Parcels app announced itself."""
+        """The Open Parcels HA app announced itself."""
         config = discovery_info.config
         host, port = config.get("host"), config.get("port")
         if not host or not port:
@@ -164,7 +164,7 @@ class OpenParcelsConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_hassio_confirm(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """The app handed over a working token: the user still confirms the entry."""
+        """The HA app handed over a working token: the user still confirms the entry."""
         assert self._discovered_url is not None
         assert self._discovered_token is not None
         if user_input is not None:

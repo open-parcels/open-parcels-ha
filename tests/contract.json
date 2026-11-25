@@ -1,5 +1,5 @@
 {
-  "_source": "open-parcels docs/openapi.json, API 2.0.0 (server commit 862cb55, glossary names): the required keys of each list item. Refresh when the server contract changes.",
+  "_source": "open-parcels docs/openapi.json, API 2.0.0 (server after ed2426e: state_reason, no calendar details): the required keys of each list item. Refresh when the server contract changes.",
   "parcel": [
     "archived_at",
     "carrier",
@@ -43,6 +43,7 @@
     "role"
   ],
   "connection": [
+    "carrier_message",
     "config",
     "has_secret",
     "id",
@@ -53,7 +54,7 @@
     "next_run_at",
     "provider",
     "state",
-    "state_detail"
+    "state_reason"
   ],
   "return": [
     "carrier",
@@ -77,7 +78,8 @@
   "calendar_entry": [
     "all_day",
     "carrier",
-    "details",
+    "cost",
+    "drop_off",
     "end",
     "end_date",
     "image_url",

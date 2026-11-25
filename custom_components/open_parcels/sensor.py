@@ -263,17 +263,18 @@ class ConnectionStateSensor(OpenParcelsConnectionEntity, SensorEntity):
         """The state, or None for a value this version does not know.
 
         "idle" is a connection that ran but had nothing it could do (DPD with
-        public tracking off); the detail says why.
+        public tracking off); `state_reason` and `carrier_message` say why.
         """
         state = self._connection.get("state")
         return state if state in self._attr_options else None
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Detail and run times as the server reports them."""
+        """Why it is in its state, and run times, as the server reports them."""
         connection = self._connection
         return {
-            "detail": connection.get("state_detail"),
+            "state_reason": connection.get("state_reason"),
+            "carrier_message": connection.get("carrier_message"),
             "provider": connection.get("provider"),
             "kind": connection.get("kind"),
             "last_run_at": connection.get("last_run_at"),

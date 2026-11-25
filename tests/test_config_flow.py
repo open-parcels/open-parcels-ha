@@ -110,7 +110,7 @@ async def test_user_flow_already_configured(
 async def test_hassio_discovery_with_token(
     hass: HomeAssistant, client: MagicMock
 ) -> None:
-    """The app can hand over a token: the user only confirms (HA-011)."""
+    """The HA app can hand over a token: the user only confirms (HA-011)."""
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": SOURCE_HASSIO},
@@ -200,7 +200,7 @@ async def test_discovery_of_configured_server_aborts(
 async def test_hassio_rediscovery_updates_the_token(
     hass: HomeAssistant, client: MagicMock
 ) -> None:
-    """The app announcing itself again with a new token updates the entry (AP-002)."""
+    """The HA app announcing itself again with a new token updates the entry (AP-002)."""
     entry = MockConfigEntry(
         domain=DOMAIN,
         unique_id="http://local-open-parcels:3000",

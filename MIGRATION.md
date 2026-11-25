@@ -21,6 +21,26 @@ new entities would get a `_2` suffix. To avoid that, do one of these before addi
 
 Otherwise, rename the new entities afterwards under Settings → Entities.
 
+## Upgrading from 0.7
+
+Release 0.8 needs a server with connection state reasons and calendar entries without `details`
+(2.0.0-dev builds after server commit `ed2426e`); update the server and this integration together.
+The config entry is not migrated and no entity is renamed. What changes, and needs a look in
+automations and templates:
+
+- Connection state sensors (`sensor.*_connection_state`): the `detail` attribute is gone.
+  `state_reason` is a code (`not_run_yet`, `sign_in_rejected`, `rate_limited`, `update_failed`,
+  `provider_idle`, `inbox_unreachable`, …) and `carrier_message` holds what the provider or
+  carrier said, as written.
+- Bus event `open_parcels_connection_state_changed`: `detail` is replaced by `state_reason` and
+  `carrier_message`.
+- Bus event `open_parcels_backup_failed` and `sensor.open_parcels_last_backup`: `error` is a code
+  (`no_space`, `permission_denied`, `read_only`, `not_a_folder`, `failed`); the server log has the
+  full error.
+- The deliveries calendar writes its titles and descriptions in Home Assistant's language (English
+  or German): statuses as words ("Status: Out for delivery", was `out_for_delivery`), and a
+  return's drop-off places and cost built from the server's `drop_off` and `cost`.
+
 ## Upgrading from 0.6
 
 Release 0.7 needs the server's status and backup routes (`GET /api/v1/status`,

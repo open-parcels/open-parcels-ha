@@ -73,7 +73,8 @@ async def test_connection_sensors(hass: HomeAssistant, loaded: MockConfigEntry) 
 
     state = hass.states.get("sensor.gls_99999_connection_state")
     assert state.state == "needs_sign_in"
-    assert state.attributes["detail"] == "Sign in again"
+    assert state.attributes["state_reason"] == "sign_in_rejected"
+    assert state.attributes["carrier_message"] == "Sign in again"
     assert state.attributes["provider"] == "gls"
     assert (
         hass.states.get("sensor.dhl_germany_abc123_last_successful_update").state

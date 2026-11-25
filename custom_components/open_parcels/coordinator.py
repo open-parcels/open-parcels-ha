@@ -755,14 +755,20 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
             self._disabled_changed()
         self._fire_once(
             (f"{DOMAIN}_connection_state_changed", connection_id),
-            [payload.get("old_state"), payload.get("new_state"), payload.get("detail")],
+            [
+                payload.get("old_state"),
+                payload.get("new_state"),
+                payload.get("state_reason"),
+                payload.get("carrier_message"),
+            ],
             {
                 "connection_id": connection_id,
                 "provider": connection.get("provider"),
                 "label": connection.get("label"),
                 "old_state": payload.get("old_state"),
                 "new_state": payload.get("new_state"),
-                "detail": payload.get("detail"),
+                "state_reason": payload.get("state_reason"),
+                "carrier_message": payload.get("carrier_message"),
                 "device_id": self.device_id_for_connection(connection_id or None),
                 "hub_device_id": self.device_id_for_connection(None),
             },

@@ -52,7 +52,7 @@ class ConnectionState(StrEnum):
     NEEDS_SIGN_IN = "needs_sign_in"
     ERROR = "error"
     DISABLED = "disabled"
-    # The last run deliberately did nothing; the detail says why.
+    # The last run deliberately did nothing; `state_reason` and `carrier_message` say why.
     IDLE = "idle"
 
 
@@ -108,7 +108,7 @@ LIVE_POSITION_EVENT = "parcel.live_position"
 # Connection removed (deleted, or merged into another): fired on the bus, but not a device
 # trigger, because the device it would belong to is removed with it.
 CONNECTION_REMOVED_EVENT = "connection.removed"
-# Events carrying a connection as it now is (label, state, detail): a new one gets its
+# Events carrying a connection as it now is (label, state, state reason): a new one gets its
 # device, a renamed one its new device name. Not device triggers.
 CONNECTION_SNAPSHOT_EVENTS = frozenset(
     {"connection.added", "connection.updated", "connection.run_finished"}

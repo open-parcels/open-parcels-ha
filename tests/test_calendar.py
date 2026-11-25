@@ -12,7 +12,10 @@ import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.open_parcels.api import OpenParcelsConnectionError
-from custom_components.open_parcels.calendar import to_calendar_event
+from custom_components.open_parcels.calendar import (
+    async_calendar_texts,
+    to_calendar_event,
+)
 
 
 async def test_calendar(
@@ -47,7 +50,8 @@ async def test_calendar(
 async def test_calendar_entry_edge_cases(hass: HomeAssistant) -> None:
     """Unparseable entries are skipped; inclusive day ends become exclusive dates."""
     await hass.config.async_set_time_zone("UTC")
-    assert to_calendar_event({"start": "nope", "end": None}) is None
+    texts = await async_calendar_texts(hass)
+    assert to_calendar_event({"start": "nope", "end": None}, texts) is None
     event = to_calendar_event(
         {
             "start": "2999-01-03T00:00:00",
@@ -55,14 +59,16 @@ async def test_calendar_entry_edge_cases(hass: HomeAssistant) -> None:
             "all_day": True,
             "title": "",
             "tracking_number": "",
-        }
+        },
+        texts,
     )
     assert event is not None
     assert event.summary == "Parcel"
     assert event.description is None
     assert event.end - event.start == timedelta(days=1)
     same = to_calendar_event(
-        {"start": "2999-01-03T00:00:00", "end": "2999-01-03T00:00:00", "all_day": True}
+        {"start": "2999-01-03T00:00:00", "end": "2999-01-03T00:00:00", "all_day": True},
+        texts,
     )
     assert same is not None and same.end > same.start
 
@@ -70,6 +76,7 @@ async def test_calendar_entry_edge_cases(hass: HomeAssistant) -> None:
 async def test_all_day_uses_the_server_local_days(hass: HomeAssistant) -> None:
     """A date-only delivery lands on the server's day, whatever HA's zone says."""
     await hass.config.async_set_time_zone("UTC")
+    texts = await async_calendar_texts(hass)
     event = to_calendar_event(
         {
             # Midnight in the server's zone: the day before in UTC.
@@ -80,9 +87,11 @@ async def test_all_day_uses_the_server_local_days(hass: HomeAssistant) -> None:
             "end_date": "2999-01-04",
             "kind": "delivered",
             "title": "Lamp",
-        }
+        },
+        texts,
     )
     assert event is not None
+    assert event.summary == "Delivered: Lamp"
     assert event.start == date(2999, 1, 3)
     assert event.end == date(2999, 1, 4)
     broken = to_calendar_event(
@@ -92,6 +101,7 @@ async def test_all_day_uses_the_server_local_days(hass: HomeAssistant) -> None:
             "all_day": True,
             "start_date": "not a date",
             "end_date": None,
-        }
+        },
+        texts,
     )
     assert broken is not None and broken.start == date(2999, 1, 3)

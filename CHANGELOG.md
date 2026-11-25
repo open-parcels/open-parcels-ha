@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.8.0
+
+Needs an Open Parcels server with connection state reasons (2.0.0-dev builds after server commit `ed2426e`). See
+[MIGRATION.md](MIGRATION.md#upgrading-from-07).
+
+### Changed (breaking)
+
+- Connection state sensors: the `detail` attribute is replaced by `state_reason` (a code) and
+  `carrier_message` (the provider's or carrier's own words); so is `detail` in the bus event
+  `open_parcels_connection_state_changed`.
+- `error` of `sensor.open_parcels_last_backup` and `open_parcels_backup_failed` is a code
+  (`no_space`, `permission_denied`, `read_only`, `not_a_folder`, `failed`).
+- The deliveries calendar builds a return's drop-off and cost lines from `drop_off` and `cost`
+  (the server no longer sends English `details`) and writes every title and description line in
+  Home Assistant's language (English or German), statuses included.
+- Discovery texts name the HA app ("The Open Parcels HA app at … offers its API token").
+
 ## 0.7.0
 
 Needs an Open Parcels server with `GET /api/v1/status`, `/api/v1/data/backups` and order totals

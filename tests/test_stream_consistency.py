@@ -191,7 +191,8 @@ def _state_change(old: str, new: str) -> str:
             },
             "old_state": old,
             "new_state": new,
-            "detail": None,
+            "state_reason": None,
+            "carrier_message": None,
         }
     )
 

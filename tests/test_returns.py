@@ -16,7 +16,10 @@ from pytest_homeassistant_custom_component.common import (
     async_get_device_automations,
 )
 
-from custom_components.open_parcels.calendar import to_calendar_event
+from custom_components.open_parcels.calendar import (
+    async_calendar_texts,
+    to_calendar_event,
+)
 from custom_components.open_parcels.const import DOMAIN
 from custom_components.open_parcels.device import find_device
 from custom_components.open_parcels.returns import cost_text, drop_off_text
@@ -124,36 +127,53 @@ async def test_return_triggers(hass: HomeAssistant, loaded: MockConfigEntry) -> 
 
 
 async def test_calendar_return_entry(hass: HomeAssistant) -> None:
-    """A return's entry names the item and lists drop-off, cost and label."""
+    """A return's entry names the item and lists drop-off, cost and label, in HA's language."""
     await hass.config.async_set_time_zone("UTC")
-    event = to_calendar_event(
-        {
-            "uid": "return-x@open-parcels",
-            "parcel_id": None,
-            "return_id": payloads.RETURN_OPEN,
-            "order_id": payloads.RETURN_ORDER,
-            "title": "Example shoes",
-            "carrier": "dhl",
-            "tracking_number": "ORDER-0001",
-            "status": "label_created",
-            "kind": "return_by",
-            "details": ["Drop off: Parcel locker (dhl)", "Free return"],
-            "start": "2999-02-01T00:00:00.000Z",
-            "end": "2999-02-02T00:00:00.000Z",
-            "all_day": True,
-            "start_date": "2999-02-01",
-            "end_date": "2999-02-02",
-            "late": False,
-            "image_url": None,
-            "url": "https://shop.example.test/label/1",
-            "pickup_point": None,
-        }
-    )
+    entry = {
+        "uid": "return-x@open-parcels",
+        "parcel_id": None,
+        "return_id": payloads.RETURN_OPEN,
+        "order_id": payloads.RETURN_ORDER,
+        "title": "Example shoes",
+        "carrier": "dhl",
+        "tracking_number": "ORDER-0001",
+        "status": "label_created",
+        "kind": "return_by",
+        "drop_off": [
+            {"carrier": "dhl", "kind": "parcel_locker", "description": None},
+            {"carrier": None, "kind": "shop", "description": "Example Kiosk"},
+        ],
+        "cost": {"free": False, "amount": 4.5, "currency": "EUR"},
+        "start": "2999-02-01T00:00:00.000Z",
+        "end": "2999-02-02T00:00:00.000Z",
+        "all_day": True,
+        "start_date": "2999-02-01",
+        "end_date": "2999-02-02",
+        "late": False,
+        "image_url": None,
+        "url": "https://shop.example.test/label/1",
+        "pickup_point": None,
+    }
+    event = to_calendar_event(entry, await async_calendar_texts(hass))
     assert event is not None
     assert event.summary == "Return by: Example shoes"
     assert event.description == (
-        "Order: ORDER-0001\nDrop off: Parcel locker (dhl)\nFree return\n"
-        "Status: label_created\nLabel: https://shop.example.test/label/1"
+        "Order: ORDER-0001\nDrop off: Parcel locker (dhl)\nDrop off: Example Kiosk\n"
+        "Return costs 4.50 EUR\nStatus: Label ready\n"
+        "Label: https://shop.example.test/label/1"
+    )
+
+    hass.config.language = "de"
+    german = to_calendar_event(
+        {**entry, "cost": {"free": True, "amount": None, "currency": None}},
+        await async_calendar_texts(hass),
+    )
+    assert german is not None
+    assert german.summary == "Zurücksenden bis: Example shoes"
+    assert german.description == (
+        "Bestellung: ORDER-0001\nAbgabe: Paketautomat (dhl)\nAbgabe: Example Kiosk\n"
+        "Kostenlose Rücksendung\nStatus: Etikett bereit\n"
+        "Etikett: https://shop.example.test/label/1"
     )
 
 

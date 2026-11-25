@@ -205,7 +205,8 @@ async def test_connection_state_change(
                 },
                 "old_state": "ok",
                 "new_state": "error",
-                "detail": "Carrier unreachable",
+                "state_reason": "update_failed",
+                "carrier_message": "Carrier unreachable",
             }
         ),
         "60",
@@ -216,6 +217,8 @@ async def test_connection_state_change(
     )
     assert hass.states.get("binary_sensor.dhl_germany_abc123_problem").state == "on"
     assert fired[0].data["new_state"] == "error"
+    assert fired[0].data["state_reason"] == "update_failed"
+    assert fired[0].data["carrier_message"] == "Carrier unreachable"
     assert fired[0].data["device_id"] is not None
 
 

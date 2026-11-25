@@ -37,7 +37,7 @@ TO_REDACT = {
     "message",
     "config",
     "detail",
-    "state_detail",
+    "carrier_message",
     "external_ref",
 }
 

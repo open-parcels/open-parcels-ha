@@ -42,7 +42,7 @@
       },
       "hassio_confirm": {
         "title": "Add Open Parcels",
-        "description": "The Open Parcels app at {url} offers its API token. Add this server?"
+        "description": "The Open Parcels HA app at {url} offers its API token. Add this server?"
       }
     },
     "error": {
@@ -56,7 +56,7 @@
       "already_configured": "This Open Parcels server is already set up.",
       "reauth_successful": "The API token was updated.",
       "reconfigure_successful": "The connection was updated.",
-      "invalid_discovery_info": "The app's discovery data has no host or port."
+      "invalid_discovery_info": "The HA app's discovery data has no host or port."
     }
   },
   "options": {
@@ -91,6 +91,54 @@
       "options": {
         "receiving": "Receiving",
         "sending": "Sending"
+      }
+    },
+    "calendar_text": {
+      "options": {
+        "parcel": "Parcel",
+        "delivered": "Delivered: {title}",
+        "return_by": "Return by: {title}",
+        "order": "Order",
+        "status": "Status",
+        "label": "Label",
+        "drop_off": "Drop off",
+        "free": "Free return",
+        "costs_money": "Return costs money",
+        "costs": "Return costs {amount}"
+      }
+    },
+    "drop_off_kind": {
+      "options": {
+        "shop": "Shop",
+        "parcel_locker": "Parcel locker",
+        "post_office": "Post office",
+        "pickup": "Pickup",
+        "any": "Any drop-off point"
+      }
+    },
+    "parcel_status": {
+      "options": {
+        "registered": "Registered",
+        "in_transit": "In transit",
+        "out_for_delivery": "Out for delivery",
+        "at_pickup_point": "At the pickup point",
+        "delivered": "Delivered",
+        "returning": "Returning",
+        "problem": "Problem",
+        "unknown": "Unknown"
+      }
+    },
+    "return_status": {
+      "options": {
+        "requested": "Return requested",
+        "label_created": "Label ready",
+        "dropped_off": "Dropped off",
+        "in_transit": "On its way back",
+        "received": "Received by the shop",
+        "refunded": "Refunded",
+        "rejected": "Rejected",
+        "cancelled": "Cancelled",
+        "expired": "Deadline passed"
       }
     }
   },

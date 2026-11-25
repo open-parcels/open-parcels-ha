@@ -37,7 +37,8 @@ def _server_lists_new_connection(client: MagicMock) -> None:
             "kind": "tracking",
             "label": "Made-up tracking",
             "state": "ok",
-            "state_detail": "Not run yet.",
+            "state_reason": "not_run_yet",
+            "carrier_message": None,
         },
     ]
 
@@ -52,7 +53,8 @@ def _snapshot(connection_id: str, provider: str, label: str, **extra) -> str:
                 "kind": "tracking",
             },
             "state": "ok",
-            "detail": None,
+            "state_reason": None,
+            "carrier_message": None,
             **extra,
         }
     )
@@ -66,7 +68,9 @@ async def test_added_connection_gets_its_device_at_once(
     _server_lists_new_connection(client)
     stream.push(
         "connection.added",
-        _snapshot(NEW_CONNECTION, "gls", "Made-up tracking", detail="Not run yet."),
+        _snapshot(
+            NEW_CONNECTION, "gls", "Made-up tracking", state_reason="not_run_yet"
+        ),
         "60",
     )
     await hass.async_block_till_done()
@@ -119,7 +123,7 @@ async def test_rename_reaches_the_device_but_keeps_a_user_name(
 async def test_idle_connection_shows_idle_with_its_reason(
     hass: HomeAssistant, loaded: MockConfigEntry, stream: FakeStream
 ) -> None:
-    """The server's "idle" state shows as idle, the detail says why."""
+    """The server's "idle" state shows as idle, state_reason and carrier_message say why."""
     reason = "Public tracking off: nothing to look up."
     stream.push(
         "connection.run_finished",
@@ -128,7 +132,8 @@ async def test_idle_connection_shows_idle_with_its_reason(
             "gls",
             "GLS (99999)",
             state="idle",
-            detail=reason,
+            state_reason="provider_idle",
+            carrier_message=reason,
             ok=True,
         ),
         "63",
@@ -136,7 +141,8 @@ async def test_idle_connection_shows_idle_with_its_reason(
     await hass.async_block_till_done()
     state = hass.states.get("sensor.gls_99999_connection_state")
     assert state.state == "idle"
-    assert state.attributes["detail"] == reason
+    assert state.attributes["state_reason"] == "provider_idle"
+    assert state.attributes["carrier_message"] == reason
 
     # The next real success is "ok" again.
     stream.push(
