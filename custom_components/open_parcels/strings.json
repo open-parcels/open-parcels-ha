@@ -181,11 +181,17 @@
       },
       "connection_problem": {
         "name": "Problem"
+      },
+      "server_health": {
+        "name": "Server health"
       }
     },
     "button": {
       "refresh": {
         "name": "Refresh"
+      },
+      "back_up": {
+        "name": "Back up now"
       }
     },
     "calendar": {
@@ -265,6 +271,9 @@
       "open_returns": {
         "name": "Open returns",
         "unit_of_measurement": "returns"
+      },
+      "last_backup": {
+        "name": "Last backup"
       }
     }
   },
@@ -301,6 +310,9 @@
     },
     "request_failed": {
       "message": "The request to the server failed: {error}"
+    },
+    "backup_failed": {
+      "message": "Could not back up the server: {error}"
     }
   }
 }

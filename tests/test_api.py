@@ -133,6 +133,23 @@ async def test_parcels_follow_the_next_offset(
     assert offsets == ["0", "2"]
 
 
+async def test_status_backups_and_orders_routes(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
+) -> None:
+    """Status, backups (read and run) and the open orders map to their routes."""
+    aioclient_mock.get(f"{API}/status", json={"status": "ok"})
+    aioclient_mock.get(f"{API}/data/backups", json={"last": None})
+    aioclient_mock.post(f"{API}/data/backups", json={"ok": True})
+    aioclient_mock.get(f"{API}/orders", json=[{"id": "o"}])
+    client = _client(hass)
+    assert await client.async_get_status() == {"status": "ok"}
+    assert await client.async_get_backups() == {"last": None}
+    assert await client.async_back_up() == {"ok": True}
+    assert await client.async_get_orders(limit=500) == [{"id": "o"}]
+    query = aioclient_mock.mock_calls[-1][1].query
+    assert (query["view"], query["limit"], query["offset"]) == ("open", "500", "0")
+
+
 @pytest.mark.parametrize(
     ("status", "error"),
     [

@@ -21,6 +21,20 @@ new entities would get a `_2` suffix. To avoid that, do one of these before addi
 
 Otherwise, rename the new entities afterwards under Settings → Entities.
 
+## Upgrading from 0.6
+
+Release 0.7 needs the server's status and backup routes (`GET /api/v1/status`,
+`/api/v1/data/backups`) and its orders with totals (`GET /api/v1/orders`), so update the server
+first. Nothing is renamed and the config entry is not migrated. New:
+
+- `binary_sensor.open_parcels_server_health` (problem: on while the server is `degraded`),
+  `sensor.open_parcels_last_backup` and, with an admin token, `button.open_parcels_back_up_now`.
+- Bus events `open_parcels_order_created` and `open_parcels_backup_failed`.
+- Order sensors carry `order_id`, `order_status` and `total`.
+
+The config entry's unique id stays the server address: the server's installation id is not
+published by its API (HA-010 stays open).
+
 ## Upgrading from 0.5 (Open Parcels server 2.0)
 
 Release 0.6 speaks only the server 2.0 API (its glossary names); update the server and this

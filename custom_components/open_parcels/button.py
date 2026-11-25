@@ -1,4 +1,4 @@
-"""Buttons: resync everything on the hub, run one connection on its device."""
+"""Buttons: resync everything and back up on the hub, run one connection on its device."""
 
 from __future__ import annotations
 
@@ -29,7 +29,10 @@ async def async_setup_entry(
 ) -> None:
     """Set up the hub's refresh button and one sync button per connection."""
     coordinator = entry.runtime_data.coordinator
-    async_add_entities([RefreshButton(coordinator)])
+    hub: list[ButtonEntity] = [RefreshButton(coordinator)]
+    if coordinator.can_back_up:
+        hub.append(BackUpButton(coordinator))
+    async_add_entities(hub)
     async_add_dynamic(
         coordinator,
         entry,
@@ -82,5 +85,27 @@ class ConnectionSyncButton(OpenParcelsConnectionEntity, ButtonEntity):
             raise HomeAssistantError(
                 translation_domain=DOMAIN,
                 translation_key="sync_failed",
+                translation_placeholders={"error": str(err)},
+            ) from err
+
+
+class BackUpButton(OpenParcelsEntity, ButtonEntity):
+    """Back the server's database up now; only with a token that holds the admin scope."""
+
+    _attr_translation_key = "back_up"
+
+    def __init__(self, coordinator: OpenParcelsCoordinator) -> None:
+        """Belongs to the hub."""
+        super().__init__(coordinator, "back_up")
+        self._attr_device_info = device_for_connection(coordinator.config_entry, None)
+
+    async def async_press(self) -> None:
+        """Back up; the result arrives as `backup.finished` on the event stream."""
+        try:
+            await self.coordinator.client.async_back_up()
+        except OpenParcelsError as err:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="backup_failed",
                 translation_placeholders={"error": str(err)},
             ) from err

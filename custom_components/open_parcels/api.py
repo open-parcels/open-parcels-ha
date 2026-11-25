@@ -222,28 +222,47 @@ class OpenParcelsClient:
         """GET /carriers."""
         return list(await self._request("GET", "/carriers"))
 
-    async def async_get_parcels(
-        self, *, include_history: bool, limit: int
+    async def _get_pages(
+        self, path: str, params: dict[str, str], limit: int
     ) -> list[dict[str, Any]]:
-        """GET /parcels: every parcel that is not archived, following the pages.
+        """GET a list route, following the pages.
 
         A full page carries `X-Next-Offset`, the offset of the next one.
         """
-        parcels: list[dict[str, Any]] = []
+        rows: list[dict[str, Any]] = []
         offset = 0
         while True:
-            params = {
-                "include_history": "true" if include_history else "false",
-                "limit": str(limit),
-                "offset": str(offset),
-            }
-            page, headers = await self._exchange("GET", "/parcels", params=params)
-            parcels.extend(page)
+            query = {**params, "limit": str(limit), "offset": str(offset)}
+            page, headers = await self._exchange("GET", path, params=query)
+            rows.extend(page)
             following = headers.get("X-Next-Offset", "")
             # Only forward: a header that does not move on would loop forever.
             if not following.isdigit() or int(following) <= offset:
-                return parcels
+                return rows
             offset = int(following)
+
+    async def async_get_parcels(
+        self, *, include_history: bool, limit: int
+    ) -> list[dict[str, Any]]:
+        """GET /parcels: every parcel that is not archived."""
+        history = "true" if include_history else "false"
+        return await self._get_pages("/parcels", {"include_history": history}, limit)
+
+    async def async_get_orders(self, *, limit: int) -> list[dict[str, Any]]:
+        """GET /orders: the open orders, with their totals and status."""
+        return await self._get_pages("/orders", {"view": "open"}, limit)
+
+    async def async_get_status(self) -> dict[str, Any]:
+        """GET /status: the state of every part of the server (read scope)."""
+        return dict(await self._request("GET", "/status"))
+
+    async def async_get_backups(self) -> dict[str, Any]:
+        """GET /data/backups: the newest backup and the ones kept (admin scope)."""
+        return dict(await self._request("GET", "/data/backups"))
+
+    async def async_back_up(self) -> dict[str, Any]:
+        """POST /data/backups: back the database up now (admin scope)."""
+        return dict(await self._request("POST", "/data/backups"))
 
     async def async_get_calendar(
         self, start: datetime, end: datetime

@@ -1,4 +1,4 @@
-"""Binary sensors: the event stream's connection, and per connection a problem flag."""
+"""Binary sensors: the server's health, the event stream, and per connection a problem flag."""
 
 from __future__ import annotations
 
@@ -33,7 +33,9 @@ async def async_setup_entry(
 ) -> None:
     """Set up the stream sensor and one problem sensor per connection."""
     coordinator = entry.runtime_data.coordinator
-    async_add_entities([EventStreamSensor(coordinator)])
+    async_add_entities(
+        [EventStreamSensor(coordinator), ServerHealthSensor(coordinator)]
+    )
     async_add_dynamic(
         coordinator,
         entry,
@@ -89,3 +91,39 @@ class ConnectionProblemSensor(OpenParcelsConnectionEntity, BinarySensorEntity):
             ConnectionState.NEEDS_SIGN_IN,
             ConnectionState.ERROR,
         )
+
+
+class ServerHealthSensor(OpenParcelsEntity, BinarySensorEntity):
+    """On while the server is degraded: a part of it needs attention (GET /status)."""
+
+    _attr_device_class = BinarySensorDeviceClass.PROBLEM
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_translation_key = "server_health"
+
+    def __init__(self, coordinator: OpenParcelsCoordinator) -> None:
+        """Belongs to the hub."""
+        super().__init__(coordinator, "server_health")
+        self._attr_device_info = device_for_connection(coordinator.config_entry, None)
+
+    @property
+    def _status(self) -> dict[str, Any]:
+        data = self.coordinator.loaded_data
+        return data.status if data is not None else {}
+
+    @property
+    def is_on(self) -> bool | None:
+        """Anything but `ok` is a problem; unknown before the first status."""
+        state = self._status.get("status")
+        return None if state is None else state != "ok"
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """The overall state, one state per part, and the server's version."""
+        status = self._status
+        return {
+            "status": status.get("status"),
+            "checks": status.get("checks"),
+            "version": status.get("version"),
+            "started_at": status.get("started_at"),
+            "checked_at": status.get("checked_at"),
+        }

@@ -79,6 +79,10 @@ def client(stream: FakeStream) -> Generator[MagicMock]:
     mock.async_get_carriers = AsyncMock(return_value=payloads.CARRIERS)
     mock.async_get_parcels = AsyncMock(side_effect=lambda **_: payloads.parcels())
     mock.async_get_returns = AsyncMock(side_effect=lambda: payloads.returns())
+    mock.async_get_orders = AsyncMock(side_effect=lambda **_: payloads.orders())
+    mock.async_get_status = AsyncMock(side_effect=lambda: payloads.status())
+    mock.async_get_backups = AsyncMock(side_effect=lambda: payloads.backups())
+    mock.async_back_up = AsyncMock(side_effect=lambda: payloads.backups()["last"])
     mock.async_get_calendar = AsyncMock(
         side_effect=lambda *_: payloads.calendar_entries()
     )

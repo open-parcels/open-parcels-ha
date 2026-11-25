@@ -23,6 +23,7 @@ PICKUP = "device_tracker.gls_99999_parcel_test0000000002"
 
 # Made up: a shop order with two lines, one in parcel A, one not placed yet.
 ORDER = {
+    "id": payloads.ORDER_EX,
     "shop": "Example shop",
     "order_number": "EX-1",
     "items": [
@@ -143,6 +144,13 @@ async def test_order_sensors_are_optional(
     assert state.state == "in_progress"
     assert state.attributes["order_number"] == "EX-1"
     assert state.attributes["parcel_count"] == 1
+    # Status and total come from GET /orders.
+    assert state.attributes["order_status"] == "partly_shipped"
+    assert state.attributes["total"] == {
+        "amount": 15.0,
+        "currency": "EUR",
+        "partial": False,
+    }
     assert [item["parcel"] for item in state.attributes["items"]] == [
         "TEST0000000001",
         None,

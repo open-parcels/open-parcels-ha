@@ -117,9 +117,28 @@ CONNECTION_STATE_EVENT = "connection.state_changed"
 # A parcel's place changed (scans placed by their place names): taken as a parcel
 # snapshot, not fired on the bus.
 PARCEL_LOCATION_EVENT = "parcel.location_changed"
-# Orders: patched onto the parcels that carry them, not fired on the bus.
+# Orders: kept with their totals and patched onto the parcels that carry them. A new one
+# (an order email started it) is also fired on the bus as f"{DOMAIN}_order_created".
+ORDER_CREATED_EVENT = "order.created"
 ORDER_UPDATED_EVENT = "order.updated"
 ORDER_DELETED_EVENT = "order.deleted"
+# Page size for the open orders (the server's maximum is 500).
+ORDER_LIST_LIMIT = 500
+# A backup finished (scheduled, manual or before "delete everything"); a failed one is
+# fired on the bus as f"{DOMAIN}_backup_failed".
+BACKUP_FINISHED_EVENT = "backup.finished"
+# Events after which the server's status (GET /status) may have changed: it is read again,
+# debounced, so the health sensor follows without waiting for the slow resync.
+STATUS_EVENTS = frozenset(
+    {
+        "connection.state_changed",
+        "connection.run_finished",
+        "connection.added",
+        "connection.removed",
+        BACKUP_FINISHED_EVENT,
+    }
+)
+STATUS_REFRESH_COOLDOWN_SECONDS = 10.0
 # Returns: kept in the returns sensor and fired on the bus as f"{DOMAIN}_{suffix}".
 RETURN_EVENT_SUFFIXES: dict[str, str] = {
     "return.created": "return_created",

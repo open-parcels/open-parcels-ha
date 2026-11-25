@@ -15,11 +15,13 @@ from typing import Any
 from homeassistant.util import dt as dt_util
 
 from .const import (
+    BACKUP_FINISHED_EVENT,
     CLOSED_RETURN_STATUSES,
     CONNECTION_REMOVED_EVENT,
     CONNECTION_STATE_EVENT,
     LIVE_POSITION_EVENT,
     LIVE_TRACKING_STATES,
+    ORDER_CREATED_EVENT,
     ORDER_DELETED_EVENT,
     ORDER_UPDATED_EVENT,
     RETURN_EVENT_SUFFIXES,
@@ -50,6 +52,12 @@ class OpenParcelsData:
     parcels: dict[str, dict[str, Any]] = field(default_factory=dict)
     # Open returns by id (refunded, rejected, cancelled and expired ones are dropped).
     returns: dict[str, dict[str, Any]] = field(default_factory=dict)
+    # Open orders by id, as GET /orders and the order events give them (total, status).
+    orders: dict[str, dict[str, Any]] = field(default_factory=dict)
+    # GET /status: the overall state, one state per part, and the parts' details.
+    status: dict[str, Any] = field(default_factory=dict)
+    # The newest backup attempt (ok, reason, at, file, bytes, error); None before the first.
+    last_backup: dict[str, Any] | None = None
 
 
 def _number(value: Any) -> float | None:
@@ -235,9 +243,52 @@ def merge_order_updated(data: OpenParcelsData, payload: Mapping[str, Any]) -> bo
     return changed
 
 
+def merge_order(data: OpenParcelsData, payload: Mapping[str, Any]) -> None:
+    """Keep an order from `order.created` / `order.updated`; an archived one is no longer open."""
+    order_id = payload.get("id")
+    if not isinstance(order_id, str) or not order_id:
+        return
+    if payload.get("archived"):
+        data.orders.pop(order_id, None)
+        return
+    data.orders[order_id] = {k: v for k, v in payload.items() if k != "parcels"}
+
+
+def backup_from_status(status: Mapping[str, Any]) -> dict[str, Any] | None:
+    """The newest backup as GET /status sums it up (without the file); None before one."""
+    backups = status.get("backups")
+    if not isinstance(backups, Mapping) or backups.get("last_at") is None:
+        return None
+    return {
+        "ok": backups.get("last_ok"),
+        "reason": None,
+        "at": backups.get("last_at"),
+        "file": None,
+        "bytes": None,
+        "error": backups.get("last_error"),
+    }
+
+
+def merge_backup(data: OpenParcelsData, payload: Mapping[str, Any]) -> bool:
+    """Take a `backup.finished` result unless an equal or newer one is kept; True if taken."""
+    at = payload.get("at")
+    if not isinstance(at, str):
+        return False
+    last = data.last_backup
+    if last is not None and str(last.get("at") or "") > at:
+        return False
+    data.last_backup = {
+        key: payload.get(key)
+        for key in ("ok", "reason", "at", "file", "bytes", "error")
+    }
+    return True
+
+
 def merge_order_deleted(data: OpenParcelsData, payload: Mapping[str, Any]) -> bool:
     """Unlink the parcels of a deleted order; True when any carried it."""
     order_id = payload.get("id")
+    if isinstance(order_id, str):
+        data.orders.pop(order_id, None)
     listed = payload.get("parcel_ids")
     parcel_ids = set(listed) if isinstance(listed, list) else set()
     changed = False
@@ -292,8 +343,11 @@ def reapply(
     elif event_type.startswith("connection."):
         merge_connection_snapshot(data, payload)
         drop_hidden(data, positions)
-    elif event_type == ORDER_UPDATED_EVENT:
+    elif event_type in (ORDER_CREATED_EVENT, ORDER_UPDATED_EVENT):
+        merge_order(data, payload)
         merge_order_updated(data, payload)
+    elif event_type == BACKUP_FINISHED_EVENT:
+        merge_backup(data, payload)
     elif event_type == ORDER_DELETED_EVENT:
         merge_order_deleted(data, payload)
     elif event_type in RETURN_EVENT_SUFFIXES:
@@ -303,3 +357,33 @@ def reapply(
         merge_parcel(
             data, positions, event_type, parcel, include_history=include_history
         )
+
+
+def loaded_backup(
+    backups: dict[str, Any] | None, status: dict[str, Any]
+) -> dict[str, Any] | None:
+    """The newest backup: GET /data/backups' when the token may read it, else the status's."""
+    if backups is None:
+        return backup_from_status(status)
+    last = backups.get("last")
+    if not isinstance(last, dict):
+        return None
+    return {
+        key: last.get(key) for key in ("ok", "reason", "at", "file", "bytes", "error")
+    }
+
+
+def order_summary(order: dict[str, Any]) -> dict[str, Any]:
+    """An order for the bus: no items with their prices (HA-025), just how many."""
+    items = order.get("items")
+    return {
+        "order_id": order.get("id"),
+        "shop": order.get("shop"),
+        "order_number": order.get("order_number"),
+        "display_name": order.get("display_name"),
+        "status": order.get("status"),
+        "placed_at": order.get("placed_at"),
+        "digital": order.get("digital"),
+        "total": order.get("total"),
+        "item_count": len(items) if isinstance(items, list) else 0,
+    }

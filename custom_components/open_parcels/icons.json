@@ -2,10 +2,12 @@
   "entity": {
     "binary_sensor": {
       "event_stream": { "default": "mdi:lan-connect", "state": { "off": "mdi:lan-disconnect" } },
-      "connection_problem": { "default": "mdi:account-check", "state": { "on": "mdi:account-alert" } }
+      "connection_problem": { "default": "mdi:account-check", "state": { "on": "mdi:account-alert" } },
+      "server_health": { "default": "mdi:heart-pulse", "state": { "on": "mdi:alert-circle-outline" } }
     },
     "button": {
-      "refresh": { "default": "mdi:refresh" }
+      "refresh": { "default": "mdi:refresh" },
+      "back_up": { "default": "mdi:database-export" }
     },
     "calendar": {
       "deliveries": { "default": "mdi:truck-delivery-outline" }
@@ -26,6 +28,7 @@
       "awaiting_pickup": { "default": "mdi:store-clock" },
       "next_delivery": { "default": "mdi:clock-fast" },
       "last_update": { "default": "mdi:clock-check-outline" },
+      "last_backup": { "default": "mdi:database-clock" },
       "open_returns": { "default": "mdi:keyboard-return" },
       "connection_state": { "default": "mdi:account-sync" },
       "order": { "default": "mdi:shopping", "state": { "partially_delivered": "mdi:shopping-outline" } }

@@ -18,8 +18,15 @@ from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
-from .api import OpenParcelsAuthError, OpenParcelsClient, OpenParcelsError, SseMessage
+from .api import (
+    OpenParcelsAuthError,
+    OpenParcelsClient,
+    OpenParcelsError,
+    OpenParcelsScopeError,
+    SseMessage,
+)
 from .const import (
+    BACKUP_FINISHED_EVENT,
     CALENDAR_FUTURE_DAYS,
     CALENDAR_PAST_DAYS,
     CONF_INCLUDE_HISTORY,
@@ -34,7 +41,9 @@ from .const import (
     DOMAIN,
     LIVE_POSITION_EVENT,
     OPEN_STATUSES,
+    ORDER_CREATED_EVENT,
     ORDER_DELETED_EVENT,
+    ORDER_LIST_LIMIT,
     ORDER_UPDATED_EVENT,
     PARCEL_LIST_LIMIT,
     PARCEL_LOCATION_EVENT,
@@ -45,6 +54,8 @@ from .const import (
     SERVER_EVENT_SUFFIXES,
     SETTINGS_UPDATED_EVENT,
     SIGNAL_LIVE_POSITION,
+    STATUS_EVENTS,
+    STATUS_REFRESH_COOLDOWN_SECONDS,
 )
 from .device import (
     connection_device_info,
@@ -59,14 +70,18 @@ from .merge import (
     connection_of,
     drop_hidden,
     hidden,
+    loaded_backup,
+    merge_backup,
     merge_connection_removed,
     merge_connection_snapshot,
     merge_connection_state,
+    merge_order,
     merge_order_deleted,
     merge_order_updated,
     merge_parcel,
     merge_position,
     merge_return,
+    order_summary,
     position_from_live,
     reapply,
     return_of,
@@ -140,6 +155,8 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
         self.stream_connected = False
         self.last_event_id: str | None = None
         self.events_received = 0
+        # Whether the token may back the server up (admin scope); found on each load.
+        self.can_back_up = False
         self._refresh_wanted = False
         # Views computed from `data`, dropped whenever the listeners are told it changed
         # (HA-022): every entity reads them on each update.
@@ -165,6 +182,13 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
             cooldown=10,
             immediate=False,
             function=self.async_refresh_calendar,
+        )
+        self._status_debouncer: Debouncer[Any] = Debouncer(
+            hass,
+            _LOGGER,
+            cooldown=STATUS_REFRESH_COOLDOWN_SECONDS,
+            immediate=False,
+            function=self.async_refresh_status,
         )
 
     # ------------------------------------------------------------------ views
@@ -302,11 +326,15 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
                 str(order.get("order_number") or ""),
             )
             key = order_key(shop, number)
+            known = self.data.orders.get(str(order.get("id") or "")) or {}
             entry = orders.setdefault(
                 key,
                 {
+                    "order_id": order.get("id"),
                     "shop": shop,
                     "order_number": number,
+                    "status": known.get("status"),
+                    "total": known.get("total"),
                     "items": list(order.get("items") or []),
                     "parcels": [],
                     "connection_id": owner_connection_id(raw),
@@ -384,13 +412,26 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
 
     async def _async_load(self) -> OpenParcelsData:
         try:
-            connections, carriers, parcels, returns = await asyncio.gather(
-                self.client.async_get_connections(),
-                self.client.async_get_carriers(),
-                self.client.async_get_parcels(
-                    include_history=self.include_history, limit=PARCEL_LIST_LIMIT
+            # Two groups: asyncio.gather is typed for at most six awaitables.
+            (
+                (connections, carriers, parcels, returns, orders),
+                (
+                    status,
+                    backups,
                 ),
-                self.client.async_get_returns(),
+            ) = await asyncio.gather(
+                asyncio.gather(
+                    self.client.async_get_connections(),
+                    self.client.async_get_carriers(),
+                    self.client.async_get_parcels(
+                        include_history=self.include_history, limit=PARCEL_LIST_LIMIT
+                    ),
+                    self.client.async_get_returns(),
+                    self.client.async_get_orders(limit=ORDER_LIST_LIMIT),
+                ),
+                asyncio.gather(
+                    self.client.async_get_status(), self._async_get_backups()
+                ),
             )
         except OpenParcelsAuthError as err:
             raise ConfigEntryAuthFailed(
@@ -415,6 +456,13 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
             },
             parcels={str(p["id"]): p for p in parcels if p.get("id")},
             returns={str(r["id"]): r for r in returns if r.get("id")},
+            orders={
+                str(o["id"]): {k: v for k, v in o.items() if k != "parcels"}
+                for o in orders
+                if o.get("id")
+            },
+            status=status,
+            last_backup=loaded_backup(backups, status),
         )
         self.positions = {
             pid: pos
@@ -433,6 +481,27 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
             )
         self.last_success_time = datetime.now(UTC)
         return data
+
+    async def _async_get_backups(self) -> dict[str, Any] | None:
+        """GET /data/backups when the token may (admin scope); None when it may not."""
+        try:
+            backups = await self.client.async_get_backups()
+        except OpenParcelsScopeError:
+            self.can_back_up = False
+            return None
+        self.can_back_up = True
+        return backups
+
+    async def async_refresh_status(self) -> None:
+        """Re-read GET /status for the health sensor after a change that may move it."""
+        try:
+            status = await self.client.async_get_status()
+        except OpenParcelsError as err:
+            _LOGGER.debug("Could not refresh the server status: %s", err)
+            return
+        if (data := self.loaded_data) is not None:
+            data.status = status
+            self.async_update_listeners()
 
     def loaded_within(self, seconds: float) -> bool:
         """Whether the last full REST load finished less than `seconds` ago."""
@@ -608,6 +677,8 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
             return
         if self.loaded_data is None:
             return
+        if event in STATUS_EVENTS:
+            self._status_debouncer.async_schedule_call()
         if event == CONNECTION_REMOVED_EVENT:
             self._apply_connection_removed(payload)
             self._calendar_debouncer.async_schedule_call()
@@ -615,8 +686,10 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
             self._apply_connection_snapshot(payload)
         elif event == CONNECTION_STATE_EVENT:
             self._apply_connection_event(payload)
-        elif event in (ORDER_UPDATED_EVENT, ORDER_DELETED_EVENT):
+        elif event in (ORDER_CREATED_EVENT, ORDER_UPDATED_EVENT, ORDER_DELETED_EVENT):
             self._apply_order_event(event, payload)
+        elif event == BACKUP_FINISHED_EVENT:
+            self._apply_backup_event(payload)
         elif event in RETURN_EVENT_SUFFIXES:
             self._apply_return_event(event, payload)
             self._calendar_debouncer.async_schedule_call()
@@ -744,15 +817,42 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
         self._publish()
 
     def _apply_order_event(self, event_type: str, payload: dict[str, Any]) -> None:
-        """Patch or unlink the order on its parcels; no bus event."""
+        """Keep the order, patch or unlink it on its parcels; a new one goes on the bus."""
         if event_type == ORDER_DELETED_EVENT:
-            changed = merge_order_deleted(self.data, payload)
+            merge_order_deleted(self.data, payload)
         else:
-            changed = merge_order_updated(self.data, payload)
+            merge_order(self.data, payload)
+            merge_order_updated(self.data, payload)
             # The parcels' own items and pictures may have changed with it.
             self._want_refresh()
-        if changed:
-            self._publish()
+        if event_type == ORDER_CREATED_EVENT and payload.get("id"):
+            order_id = str(payload["id"])
+            self._fire_once(
+                (f"{DOMAIN}_order_created", order_id),
+                order_id,
+                {
+                    **order_summary(payload),
+                    "hub_device_id": self.device_id_for_connection(None),
+                },
+            )
+        self._publish()
+
+    def _apply_backup_event(self, payload: dict[str, Any]) -> None:
+        """Keep the newest backup result; a failed one goes on the bus."""
+        if not merge_backup(self.data, payload):
+            return
+        if payload.get("ok") is False:
+            self._fire_once(
+                (f"{DOMAIN}_backup_failed", "backup"),
+                payload.get("at"),
+                {
+                    "reason": payload.get("reason"),
+                    "at": payload.get("at"),
+                    "error": payload.get("error"),
+                    "hub_device_id": self.device_id_for_connection(None),
+                },
+            )
+        self._publish()
 
     @property
     def loaded_data(self) -> OpenParcelsData | None:
@@ -883,4 +983,5 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
         """Cancel the calendar and reconnect debouncers too."""
         await super().async_shutdown()
         self._calendar_debouncer.async_shutdown()
+        self._status_debouncer.async_shutdown()
         self._reconnect_debouncer.async_shutdown()

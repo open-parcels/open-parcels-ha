@@ -181,11 +181,17 @@
       },
       "connection_problem": {
         "name": "Problem"
+      },
+      "server_health": {
+        "name": "Serverzustand"
       }
     },
     "button": {
       "refresh": {
         "name": "Aktualisieren"
+      },
+      "back_up": {
+        "name": "Jetzt sichern"
       }
     },
     "calendar": {
@@ -265,6 +271,9 @@
       "open_returns": {
         "name": "Offene Rücksendungen",
         "unit_of_measurement": "Rücksendungen"
+      },
+      "last_backup": {
+        "name": "Letzte Sicherung"
       }
     }
   },
@@ -301,6 +310,9 @@
     },
     "request_failed": {
       "message": "Die Anfrage an den Server ist fehlgeschlagen: {error}"
+    },
+    "backup_failed": {
+      "message": "Die Sicherung des Servers ist fehlgeschlagen: {error}"
     }
   }
 }

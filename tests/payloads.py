@@ -273,3 +273,89 @@ def returns() -> list[dict[str, Any]]:
             "updated_at": "2999-01-01T10:00:00.000Z",
         }
     ]
+
+
+ORDER_EX = "0e0e0e0e-0e0e-4e0e-8e0e-0e0e0e0e0e0e"
+
+
+def orders() -> list[dict[str, Any]]:
+    """GET /orders (open): one made-up shop order with its stated total."""
+    return copy.deepcopy(
+        [
+            {
+                "id": ORDER_EX,
+                "shop": "Example shop",
+                "order_number": "EX-1",
+                "label": None,
+                "display_name": "Example shop EX-1",
+                "placed_at": "2030-01-01T09:00:00.000Z",
+                "status": "partly_shipped",
+                "digital": False,
+                "archived": False,
+                "archived_at": None,
+                "archive_mode": "automatic",
+                "parcel_count": 1,
+                "delivered_count": 0,
+                "total": {"amount": 15.0, "currency": "EUR", "partial": False},
+                "items": [],
+                "return_until": None,
+                "returns": [],
+                "parcels": [],
+                "created_at": "2030-01-01T09:00:00.000Z",
+                "updated_at": "2030-01-01T09:00:00.000Z",
+            }
+        ]
+    )
+
+
+_CHECKS = ("database", "connections", "inboxes", "scheduler", "event_stream", "backups")
+
+
+def status(overall: str = "ok") -> dict[str, Any]:
+    """GET /status: every part fine unless `overall` says otherwise."""
+    return {
+        "status": overall,
+        "checks": dict.fromkeys(_CHECKS, "ok") | {"backups": overall},
+        "checked_at": "2030-01-02T12:00:00.000Z",
+        "version": "2.0.0",
+        "started_at": "2030-01-01T00:00:00.000Z",
+        "database": {"detail": None},
+        "connections": [],
+        "inboxes": [],
+        "scheduler": {
+            "running": True,
+            "in_flight": 0,
+            "last_cycle_at": None,
+            "last_error": None,
+            "next_run_at": None,
+        },
+        "event_stream": {"clients": 1, "last_seq": 1, "stored": 1, "live_sessions": 0},
+        "backups": {
+            "enabled": True,
+            "last_ok": True,
+            "last_at": "2030-01-02T03:00:00.000Z",
+            "last_error": None,
+            "next_at": "2030-01-03T03:00:00.000Z",
+        },
+    }
+
+
+def backups() -> dict[str, Any]:
+    """GET /data/backups: one good scheduled backup."""
+    return {
+        "interval_hours": 24,
+        "keep": 7,
+        "directory": "/data/backups",
+        "last": {
+            "ok": True,
+            "reason": "scheduled",
+            "at": "2030-01-02T03:00:00.000Z",
+            "file": "open-parcels-20300102-030000.db",
+            "bytes": 4096,
+            "error": None,
+            "pruned": 0,
+        },
+        "next_at": "2030-01-03T03:00:00.000Z",
+        "failing": False,
+        "files": [],
+    }

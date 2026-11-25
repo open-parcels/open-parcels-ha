@@ -33,7 +33,9 @@ Coming from the per-carrier parcel integrations or the Parcel Aggregator? See
 - An Open Parcels server 2.0 or newer (its glossary API names), reachable from Home Assistant. This can be the Home Assistant app or a
   container such as `http://192.168.1.10:4000`.
 - An API token with the scopes **read** and **write**. Create it in the Open Parcels web interface
-  under Settings → API tokens. The integration never needs `admin`.
+  under Settings → API tokens. With the **admin** scope as well, the hub also gets **Back up now**
+  and the last backup sensor names the backup file; without it the sensor shows the time and the
+  result only.
 - Home Assistant 2025.12 or newer.
 
 ## Installation
@@ -75,6 +77,9 @@ Assistant asks for a new one (reauthentication).
 | `calendar.open_parcels_deliveries` | `deliveries` | next expected delivery | the same entries as the server's calendar and ICS feed; a return's last day reads "Return by: <item or shop>" with its drop-off options and cost |
 | `button.open_parcels_refresh` | `refresh` | | resyncs everything now |
 | `binary_sensor.open_parcels_event_stream` | `event_stream` | event stream connected (diagnostic) | `events_received` |
+| `binary_sensor.open_parcels_server_health` | `server_health` | on while the server is `degraded`: a connection or inbox in error or needing sign-in, failing backups or a stalled scheduler (`GET /api/v1/status`, diagnostic) | `status`, `checks` (one state per part), `version`, `started_at`, `checked_at` |
+| `sensor.open_parcels_last_backup` | `last_backup` | when the newest backup attempt finished (timestamp, diagnostic) | `ok`, `reason` (`scheduled`, `manual`, `before_delete`), `file`, `bytes`, `error`, `enabled`, `next_at` |
+| `button.open_parcels_back_up_now` | `back_up` | | backs the server's database up now; only with an **admin** token |
 
 Parcels that no connection follows (tracked by number only) live on the hub device.
 
@@ -92,7 +97,7 @@ name, the name is not repeated. It is linked to the hub (`via_device`).
 | `binary_sensor.<device>_problem` | on while the connection needs a sign-in or fails (diagnostic) |
 | `button.<device>_refresh` | asks the server to run this connection now |
 | `device_tracker.<device>_parcel_<tracking_number>` | one per open parcel (announced, in transit, out for delivery, at a pickup point, returning, problem). State: the status key. On the map once its position is known: the live courier, else the latest scan with coordinates. Delivered and finished parcels get no entity; they are listed in the list sensors (`parcel_ids`, `parcels`). Named by the server's *Default parcel label* setting (its label, item names or the tracking number; entity ids always use the number). Entity picture: a grid of its item pictures (1, 2×2 or 3×3), served by Home Assistant under a signed address. |
-| `sensor.<device>_order_<shop>_<number>` | optional (*Order entities*): one per open order. State `in_progress` or `partially_delivered`; attributes: shop, order number, counts, `items` (with the code of the parcel carrying each, or null) and `parcels`. |
+| `sensor.<device>_order_<shop>_<number>` | optional (*Order entities*): one per open order. State `in_progress` or `partially_delivered`; attributes: shop, order number, `order_id`, `order_status` (the server's order status), `total` (`amount`, `currency`, `partial`: the shop's stated total, a payment receipt's, or the sum of the priced lines), counts, `items` (with the code of the parcel carrying each, or null) and `parcels`. |
 
 A parcel belongs to the connection that follows it as its primary, then a hand-off, then a
 mailbox.
@@ -140,7 +145,7 @@ included.
 Kept out of history: the trackers' `sender`, `receiver`, `url`, `pickup_point`, `display_name`,
 `label`, `items`, `order`, `history`, `live` and `lookup`; the next-delivery sensors' `tracking_number`,
 `sender`, `receiver` and `parcel`; the list sensors' `parcels`; the order sensors' `shop`,
-`order_number`, `items` and `parcels`; the returns sensor's `returns`; the calendar's
+`order_number`, `order_id`, `total`, `items` and `parcels`; the returns sensor's `returns`; the calendar's
 `description` and `location`. Still recorded: states, the trackers' `tracking_number` and status keys,
 and the calendar's `message` (the next entry's title).
 
@@ -170,12 +175,15 @@ These server events are fired on the Home Assistant bus as `open_parcels_<type>`
 | `return.created` | `open_parcels_return_created` (`return_id` plus the `returns` attribute's fields) |
 | `return.updated` | `open_parcels_return_updated` (the same fields) |
 | `connection.removed` | `open_parcels_connection_removed` (`connection_id`, `provider`, `label`, `merged_into`); bus event only, no device trigger |
+| `order.created` | `open_parcels_order_created` (`order_id`, `shop`, `order_number`, `display_name`, `status`, `placed_at`, `digital`, `total`, `item_count`, `hub_device_id`): an order email started an order; bus event only |
+| `backup.finished` with `ok: false` | `open_parcels_backup_failed` (`reason`, `at`, `error`, `hub_device_id`); bus event only. Every result also updates the last backup sensor |
 
 Other server events update the data without a bus event of their own: `parcel.live_position`
 (the courier's position), `parcel.location_changed` (a parcel placed at a new scan),
 `connection.added`, `connection.updated` and `connection.run_finished` (a connection's name and state),
 `order.updated` and `order.deleted` (the order on the parcels), and `settings.updated` (reloads
-everything).
+everything). A connection's state change, run or removal and every backup also re-read the
+server's status for the health sensor (at most every 10 seconds).
 
 Each change fires once. A message the server replays after a reconnect, or the same change sent
 again, does not fire a second time.

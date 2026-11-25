@@ -70,6 +70,7 @@ async def async_setup_entry(
     hub.append(NextDeliverySensor(coordinator, None, "next_delivery"))
     hub.append(OpenReturnsSensor(coordinator))
     hub.append(LastUpdateSensor(coordinator))
+    hub.append(LastBackupSensor(coordinator))
     async_add_entities(hub)
 
     def _connection_entities(connection_id: str) -> list[Entity]:
@@ -287,7 +288,9 @@ class OrderSensor(OpenParcelsEntity, SensorEntity):
     _attr_device_class = SensorDeviceClass.ENUM
     _attr_translation_key = "order"
     _attr_options = ["in_progress", "partially_delivered"]
-    _unrecorded_attributes = frozenset({"items", "parcels", "shop", "order_number"})
+    _unrecorded_attributes = frozenset(
+        {"items", "parcels", "shop", "order_number", "order_id", "total"}
+    )
 
     def __init__(self, coordinator: OpenParcelsCoordinator, key: str) -> None:
         """Place the order on its shop's device (the hub when unknown)."""
@@ -322,13 +325,16 @@ class OrderSensor(OpenParcelsEntity, SensorEntity):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Shop, number, counts, items (with their parcel's code) and parcels."""
+        """Shop, number, status, total, counts, items (with their parcel's code), parcels."""
         order = self._order or {}
         parcels = order.get("parcels") or []
         codes = {parcel["id"]: parcel["tracking_number"] for parcel in parcels}
         return {
             "shop": order.get("shop"),
             "order_number": order.get("order_number"),
+            "order_id": order.get("order_id"),
+            "order_status": order.get("status"),
+            "total": order.get("total"),
             "parcel_count": len(parcels),
             "delivered_count": sum(1 for parcel in parcels if parcel["delivered"]),
             "items": [
@@ -337,4 +343,43 @@ class OrderSensor(OpenParcelsEntity, SensorEntity):
                 if isinstance(item, dict)
             ],
             "parcels": parcels,
+        }
+
+
+class LastBackupSensor(OpenParcelsEntity, SensorEntity):
+    """When the server last tried a backup, whether it worked, and the file it wrote."""
+
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_translation_key = "last_backup"
+
+    def __init__(self, coordinator: OpenParcelsCoordinator) -> None:
+        """Belongs to the hub."""
+        super().__init__(coordinator, "last_backup")
+        self._attr_device_info = device_for_connection(coordinator.config_entry, None)
+
+    @property
+    def _backup(self) -> dict[str, Any]:
+        data = self.coordinator.loaded_data
+        return (data.last_backup if data is not None else None) or {}
+
+    @property
+    def native_value(self) -> datetime | None:
+        """When the newest backup attempt finished; unknown before the first."""
+        return parse_iso(self._backup.get("at"))
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Whether it worked, why it ran, the file, its size, the error and the next one."""
+        backup = self._backup
+        data = self.coordinator.loaded_data
+        backups = (data.status.get("backups") if data is not None else None) or {}
+        return {
+            "ok": backup.get("ok"),
+            "reason": backup.get("reason"),
+            "file": backup.get("file"),
+            "bytes": backup.get("bytes"),
+            "error": backup.get("error"),
+            "enabled": backups.get("enabled"),
+            "next_at": backups.get("next_at"),
         }
