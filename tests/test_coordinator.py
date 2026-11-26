@@ -133,6 +133,39 @@ async def test_removal_without_connections_goes_to_the_connection_device(
     assert fired[0].data["device_id"] != hub.id
 
 
+async def test_imported_history_is_stored_but_never_fired(
+    hass: HomeAssistant, loaded: MockConfigEntry, stream: FakeStream
+) -> None:
+    """An import job's events update the parcels; only a reload follows its batch."""
+    delivered = events(hass, f"{DOMAIN}_parcel_delivered")
+    created = events(hass, f"{DOMAIN}_order_created")
+    parcel = _parcel(0, status="delivered", delivered=True, live=None)
+    stream.push(
+        "parcel.delivered", json.dumps({"parcel": parcel, "imported": True}), "60"
+    )
+    order = {**payloads.orders()[0], "id": "0e0e0e0e-0e0e-4e0e-8e0e-0e0e0e0e0e0e"}
+    stream.push("order.created", json.dumps({**order, "imported": True}), "61")
+    await hass.async_block_till_done()
+    coordinator = loaded.runtime_data.coordinator
+    assert delivered == [] and created == []
+    assert parcel["id"] in coordinator.data.parcels
+    assert order["id"] in coordinator.data.orders
+
+    refresh = MagicMock()
+    coordinator.async_start_refresh = refresh
+    summary = {
+        "connection": {"id": payloads.CONNECTION_DHL, "provider": "dhl"},
+        "created": 3,
+        "updated": 0,
+        "archived": 2,
+        "orders": 5,
+        "imported": True,
+    }
+    stream.push("parcel.imported", json.dumps(summary), "62")
+    await hass.async_block_till_done()
+    refresh.assert_called_once_with(debounced=True)
+
+
 async def test_delivered_and_delivery_time_and_sending_events(
     hass: HomeAssistant, loaded: MockConfigEntry, stream: FakeStream
 ) -> None:

@@ -46,6 +46,7 @@ from .const import (
     ORDER_DELETED_EVENT,
     ORDER_LIST_LIMIT,
     ORDER_UPDATED_EVENT,
+    PARCEL_IMPORTED_EVENT,
     PARCEL_LIST_LIMIT,
     PARCEL_LOCATION_EVENT,
     READY_EVENT,
@@ -167,6 +168,7 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
         # current message repeats one, and the change last fired per event and id.
         self._max_seq: int | None = None
         self._repeat = False
+        self._imported = False
         self._fired: dict[tuple[str, str], str] = {}
         # One reload at a time; while one runs, the messages it may predate.
         self._reload_lock = asyncio.Lock()
@@ -654,6 +656,8 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
             self.last_event_id = message.id
         self._note_sequence(message)
         self.events_received += 1
+        # An import job's history is stored, never fired on the bus.
+        self._imported = payload.get("imported") is True
 
         event = message.event
         if event == RESYNC_EVENT:
@@ -693,6 +697,8 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
             self._apply_order_event(event, payload)
         elif event == BACKUP_FINISHED_EVENT:
             self._apply_backup_event(payload)
+        elif event == PARCEL_IMPORTED_EVENT:
+            self._want_refresh()
         elif event in JOB_EVENTS:
             handle_job_event(self, event, payload)
         elif event in RETURN_EVENT_SUFFIXES:
@@ -720,14 +726,9 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
     def fire_once(
         self, key: tuple[str, str], change: object, event_data: dict[str, Any]
     ) -> None:
-        """Fire a bus event unless this exact change was fired already.
-
-        A replayed message (its sequence already seen) and an event repeating the
-        change last fired for the same parcel or connection are both dropped, so an
-        automation runs once per change however often the server repeats it.
-        """
+        """Fire a bus event once per change; never for replays or imported history."""
         fingerprint = json.dumps(change, sort_keys=True, default=str)
-        if self._repeat or self._fired.get(key) == fingerprint:
+        if self._imported or self._repeat or self._fired.get(key) == fingerprint:
             _LOGGER.debug("Not firing %s again for the same change", key[0])
             return
         self._fired[key] = fingerprint

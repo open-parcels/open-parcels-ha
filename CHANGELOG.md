@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+Needs an Open Parcels server with imported history (`parcel.imported`, server migration 0030).
+
+### Changed
+
+- Server events marked `imported: true` (what an import job stores, such as Amazon's "Import
+  history") update the data but fire no bus event, so imported orders and deliveries never run
+  automations; `parcel.imported` reloads the data.
+
 ## 0.9.0 (2026-11-26)
 
 Needs an Open Parcels server with connection actions and jobs (it reads `GET /jobs` on every

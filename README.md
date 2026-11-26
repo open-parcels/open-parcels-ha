@@ -182,6 +182,11 @@ These server events are fired on the Home Assistant bus as `open_parcels_<type>`
 | `job.finished` | `open_parcels_job_finished` (the same fields; `state` is `done`, `partial`, `failed` or `cancelled`); bus event only |
 | `backup.finished` with `ok: false` | `open_parcels_backup_failed` (`reason`, `at`, `error`, `hub_device_id`); bus event only. Every result also updates the last backup sensor |
 
+History a connection action imports (Amazon "Import history") is stored but never fired: its
+server events carry `imported: true` and fire no bus event, and the batch's `parcel.imported`
+only reloads the data. An import of years therefore never runs "delivered" automations; use
+`open_parcels_job_finished` to learn that it is done.
+
 Other server events update the data without a bus event of their own: `parcel.live_position`
 (the courier's position), `parcel.location_changed` (a parcel placed at a new event),
 `connection.added`, `connection.updated` and `connection.run_finished` (a connection's name and state),

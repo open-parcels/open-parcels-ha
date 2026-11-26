@@ -127,6 +127,10 @@ PARCEL_LOCATION_EVENT = "parcel.location_changed"
 ORDER_CREATED_EVENT = "order.created"
 ORDER_UPDATED_EVENT = "order.updated"
 ORDER_DELETED_EVENT = "order.deleted"
+# An import job stored a batch of history: the parcels and orders it brought are reloaded,
+# nothing is fired. Every live event of such a batch carries `imported: true` and is kept
+# off the bus too, so an import of years never runs "delivered" automations.
+PARCEL_IMPORTED_EVENT = "parcel.imported"
 # Page size for the open orders (the server's maximum is 500).
 ORDER_LIST_LIMIT = 500
 # A backup finished (scheduled, manual or before "delete everything"); a failed one is
