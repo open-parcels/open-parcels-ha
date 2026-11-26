@@ -96,6 +96,8 @@ name, the name is not repeated. It is linked to the hub (`via_device`).
 | `sensor.<device>_connection_state` | `ok`, `idle`, `needs_sign_in`, `error` or `disabled` (diagnostic), with `detail`, `provider`, `kind`, `last_run_at`, `next_run_at`, `last_ok_at` |
 | `binary_sensor.<device>_problem` | on while the connection needs a sign-in or fails (diagnostic) |
 | `button.<device>_refresh` | asks the server to run this connection now |
+| `button.<device>_<action>` | one per action of the connection's provider marked for Home Assistant (a task that needs no input and is not destructive, e.g. *Import history*); starts it with its defaults |
+| `sensor.<device>_job` | the connection's newest job: `queued`, `running`, `paused`, `done`, `partial`, `failed` or `cancelled`, with `job_id`, `action`, `done`, `total`, `phase`, `summary`, `reason`, `resume_at`, `started_at`, `finished_at` |
 | `device_tracker.<device>_parcel_<tracking_number>` | one per open parcel (announced, in transit, out for delivery, at a pickup point, returning, problem). State: the status key. On the map once its position is known: the live courier, else the latest event with coordinates. Delivered and finished parcels get no entity; they are listed in the list sensors (`parcel_ids`, `parcels`). Named by the server's *Default parcel label* setting (its label, item names or the tracking number; entity ids always use the number). Entity picture: a grid of its item pictures (1, 2×2 or 3×3), served by Home Assistant under a signed address. |
 | `sensor.<device>_order_<shop>_<number>` | optional (*Order entities*): one per open order. State `in_progress` or `partially_delivered`; attributes: shop, order number, `order_id`, `order_status` (the server's order status), `total` (`amount`, `currency`, `partial`: the shop's stated total, a payment receipt's, or the sum of the priced lines), counts, `items` (with the code of the parcel carrying each, or null) and `parcels`. |
 
@@ -176,6 +178,8 @@ These server events are fired on the Home Assistant bus as `open_parcels_<type>`
 | `return.updated` | `open_parcels_return_updated` (the same fields) |
 | `connection.removed` | `open_parcels_connection_removed` (`connection_id`, `provider`, `label`, `merged_into`); bus event only, no device trigger |
 | `order.created` | `open_parcels_order_created` (`order_id`, `shop`, `order_number`, `display_name`, `status`, `placed_at`, `digital`, `total`, `item_count`, `hub_device_id`): an order email started an order; bus event only |
+| `job.paused` | `open_parcels_job_paused` (`job_id`, `connection_id`, `provider`, `label`, `action`, `state`, `reason`, `summary`, `resume_at`, `device_id`, `hub_device_id`); bus event only |
+| `job.finished` | `open_parcels_job_finished` (the same fields; `state` is `done`, `partial`, `failed` or `cancelled`); bus event only |
 | `backup.finished` with `ok: false` | `open_parcels_backup_failed` (`reason`, `at`, `error`, `hub_device_id`); bus event only. Every result also updates the last backup sensor |
 
 Other server events update the data without a bus event of their own: `parcel.live_position`
@@ -212,6 +216,8 @@ hub's for all of them.
 | `open_parcels.track_parcel` | `tracking_number`, optional `carrier`, `label`, `direction`, `config_entry_id` | starts tracking a number; returns `parcel_id` and `carrier` |
 | `open_parcels.archive_parcel` | `tracking_number` or `parcel_id`, optional `config_entry_id` | archives the parcel on the server |
 | `open_parcels.refresh` | optional `tracking_number` or `parcel_id`, `config_entry_id` | runs the connections that follow the parcel (if given), then resyncs |
+| `open_parcels.run_action` | `device_id` (the connection's device), `action`, optional `input`, `confirm` | starts one of the connection's actions; a destructive one only with `confirm: true`; returns `url` for a link |
+| `open_parcels.cancel_job` | `device_id` (the connection's device) | cancels the job the connection is busy with; what it imported stays |
 
 `config_entry_id` is only needed when more than one server is set up.
 

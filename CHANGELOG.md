@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+Needs an Open Parcels server with connection actions and jobs (it reads `GET /jobs` on every
+load).
+
+### Added
+
+- Connection actions: a button per action marked for Home Assistant, and the services
+  `open_parcels.run_action` and `open_parcels.cancel_job`.
+- `sensor.<device>_job`: the connection's newest job, kept current by the `job.*` live events,
+  and the bus events `open_parcels_job_paused` and `open_parcels_job_finished`.
+
 ## 0.8.0
 
 Needs an Open Parcels server with connection state reasons (2.0.0-dev builds after server commit `ed2426e`). See
