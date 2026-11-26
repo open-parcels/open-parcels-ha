@@ -1,4 +1,4 @@
-"""Services: track a code, archive a parcel, refresh."""
+"""Services: track a code, archive a parcel, refresh, run a connection's action, cancel its job."""
 
 from __future__ import annotations
 
@@ -13,10 +13,12 @@ from homeassistant.core import (
     SupportsResponse,
 )
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
-from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import config_validation as cv, device_registry as dr
 
 from .api import OpenParcelsApiError, OpenParcelsError, OpenParcelsNotFoundError
 from .const import DOMAIN
+from .device import connection_identifier
+from .jobs import connection_actions
 from .schema import vol
 
 if TYPE_CHECKING:
@@ -25,6 +27,8 @@ if TYPE_CHECKING:
 SERVICE_TRACK_PARCEL = "track_parcel"
 SERVICE_ARCHIVE_PARCEL = "archive_parcel"
 SERVICE_REFRESH = "refresh"
+SERVICE_RUN_ACTION = "run_action"
+SERVICE_CANCEL_JOB = "cancel_job"
 
 ATTR_CONFIG_ENTRY_ID = "config_entry_id"
 ATTR_TRACKING_NUMBER = "tracking_number"
@@ -32,6 +36,10 @@ ATTR_PARCEL_ID = "parcel_id"
 ATTR_CARRIER = "carrier"
 ATTR_LABEL = "label"
 ATTR_DIRECTION = "direction"
+ATTR_DEVICE_ID = "device_id"
+ATTR_ACTION = "action"
+ATTR_INPUT = "input"
+ATTR_CONFIRM = "confirm"
 
 _ENTRY = vol.Optional(ATTR_CONFIG_ENTRY_ID)
 # The server's own bounds: tracking codes 4-64 characters, carrier ids 1-64.
@@ -64,6 +72,16 @@ PARCEL_SCHEMA = vol.Schema(
         vol.Optional(ATTR_PARCEL_ID): vol.All(cv.string, vol.Strip, _uuid),
     }
 )
+
+RUN_ACTION_SCHEMA = vol.Schema(
+    {
+        vol.Required(ATTR_DEVICE_ID): cv.string,
+        vol.Required(ATTR_ACTION): vol.All(cv.string, vol.Match(r"^[a-z0-9_]{1,40}$")),
+        vol.Optional(ATTR_INPUT, default={}): dict,
+        vol.Optional(ATTR_CONFIRM, default=False): cv.boolean,
+    }
+)
+CANCEL_JOB_SCHEMA = vol.Schema({vol.Required(ATTR_DEVICE_ID): cv.string})
 
 
 def _entry(hass: HomeAssistant, call: ServiceCall) -> OpenParcelsConfigEntry:
@@ -190,6 +208,72 @@ async def _refresh(call: ServiceCall) -> None:
     await entry.runtime_data.coordinator.async_request_refresh()
 
 
+def _connection_of_device(
+    hass: HomeAssistant, call: ServiceCall
+) -> tuple[OpenParcelsConfigEntry, str]:
+    """The loaded entry and the connection whose device the call names."""
+    device = dr.async_get(hass).async_get(call.data[ATTR_DEVICE_ID])
+    for entry in hass.config_entries.async_entries(DOMAIN):
+        if device is None or entry.state is not ConfigEntryState.LOADED:
+            continue
+        data = entry.runtime_data.coordinator.data
+        for connection_id in data.connections if data else ():
+            if (
+                connection_identifier(entry.entry_id, connection_id)
+                in device.identifiers
+            ):
+                return entry, connection_id
+    raise ServiceValidationError(
+        translation_domain=DOMAIN, translation_key="connection_device_required"
+    )
+
+
+async def _run_action(call: ServiceCall) -> ServiceResponse:
+    """Start an action; a destructive one only with `confirm: true`."""
+    entry, connection_id = _connection_of_device(call.hass, call)
+    data = entry.runtime_data.coordinator.data
+    action = next(
+        (
+            a
+            for a in connection_actions(data, connection_id)
+            if a.get("id") == call.data[ATTR_ACTION]
+        ),
+        None,
+    )
+    if action is None:
+        raise ServiceValidationError(
+            translation_domain=DOMAIN,
+            translation_key="no_such_action",
+            translation_placeholders={"action": call.data[ATTR_ACTION]},
+        )
+    if action.get("destructive") is True and not call.data[ATTR_CONFIRM]:
+        raise ServiceValidationError(
+            translation_domain=DOMAIN, translation_key="confirm_required"
+        )
+    try:
+        answer = await entry.runtime_data.client.async_run_action(
+            connection_id, str(action["id"]), dict(call.data[ATTR_INPUT])
+        )
+    except OpenParcelsError as err:
+        raise _api_error(err) from err
+    return {"url": answer.get("url")}
+
+
+async def _cancel_job(call: ServiceCall) -> None:
+    """Cancel the job the connection is busy with."""
+    entry, connection_id = _connection_of_device(call.hass, call)
+    data = entry.runtime_data.coordinator.data
+    job = data.jobs.get(connection_id) if data else None
+    if job is None or job.get("state") not in ("queued", "running", "paused"):
+        raise ServiceValidationError(
+            translation_domain=DOMAIN, translation_key="no_active_job"
+        )
+    try:
+        await entry.runtime_data.client.async_cancel_job(str(job["id"]))
+    except OpenParcelsError as err:
+        raise _api_error(err) from err
+
+
 def async_setup_services(hass: HomeAssistant) -> None:
     """Register the services."""
     hass.services.async_register(
@@ -204,4 +288,14 @@ def async_setup_services(hass: HomeAssistant) -> None:
     )
     hass.services.async_register(
         DOMAIN, SERVICE_REFRESH, _refresh, schema=PARCEL_SCHEMA
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_RUN_ACTION,
+        _run_action,
+        schema=RUN_ACTION_SCHEMA,
+        supports_response=SupportsResponse.OPTIONAL,
+    )
+    hass.services.async_register(
+        DOMAIN, SERVICE_CANCEL_JOB, _cancel_job, schema=CANCEL_JOB_SCHEMA
     )

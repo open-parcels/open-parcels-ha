@@ -39,6 +39,7 @@ from .const import (
     DEFAULT_ORDER_ENTITIES,
     DEFAULT_RESYNC_MINUTES,
     DOMAIN,
+    JOB_EVENTS,
     LIVE_POSITION_EVENT,
     OPEN_STATUSES,
     ORDER_CREATED_EVENT,
@@ -63,6 +64,7 @@ from .device import (
     find_device,
     hub_identifier,
 )
+from .jobs import actions_by_provider, handle_job_event, newest_jobs
 from .merge import (
     GONE_EVENTS,
     CourierPosition,
@@ -415,10 +417,7 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
             # Two groups: asyncio.gather is typed for at most six awaitables.
             (
                 (connections, carriers, parcels, returns, orders),
-                (
-                    status,
-                    backups,
-                ),
+                (status, backups, jobs),
             ) = await asyncio.gather(
                 asyncio.gather(
                     self.client.async_get_connections(),
@@ -430,7 +429,9 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
                     self.client.async_get_orders(limit=ORDER_LIST_LIMIT),
                 ),
                 asyncio.gather(
-                    self.client.async_get_status(), self._async_get_backups()
+                    self.client.async_get_status(),
+                    self._async_get_backups(),
+                    self.client.async_get_jobs(),
                 ),
             )
         except OpenParcelsAuthError as err:
@@ -463,6 +464,8 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
             },
             status=status,
             last_backup=loaded_backup(backups, status),
+            actions=actions_by_provider(carriers),
+            jobs=newest_jobs(jobs),
         )
         self.positions = {
             pid: pos
@@ -690,6 +693,8 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
             self._apply_order_event(event, payload)
         elif event == BACKUP_FINISHED_EVENT:
             self._apply_backup_event(payload)
+        elif event in JOB_EVENTS:
+            handle_job_event(self, event, payload)
         elif event in RETURN_EVENT_SUFFIXES:
             self._apply_return_event(event, payload)
             self._calendar_debouncer.async_schedule_call()
@@ -712,7 +717,7 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
         if seq is not None and not self._repeat:
             self._max_seq = seq
 
-    def _fire_once(
+    def fire_once(
         self, key: tuple[str, str], change: object, event_data: dict[str, Any]
     ) -> None:
         """Fire a bus event unless this exact change was fired already.
@@ -753,7 +758,7 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
             self._want_refresh()
         elif merge_connection_state(self.data, payload):
             self._disabled_changed()
-        self._fire_once(
+        self.fire_once(
             (f"{DOMAIN}_connection_state_changed", connection_id),
             [
                 payload.get("old_state"),
@@ -808,7 +813,7 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
         merged_into = payload.get("merged_into")
         if isinstance(merged_into, str) and merged_into not in self.data.connections:
             self._want_refresh()
-        self._fire_once(
+        self.fire_once(
             (f"{DOMAIN}_connection_removed", connection_id),
             merged_into,
             {
@@ -833,7 +838,7 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
             self._want_refresh()
         if event_type == ORDER_CREATED_EVENT and payload.get("id"):
             order_id = str(payload["id"])
-            self._fire_once(
+            self.fire_once(
                 (f"{DOMAIN}_order_created", order_id),
                 order_id,
                 {
@@ -848,7 +853,7 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
         if not merge_backup(self.data, payload):
             return
         if payload.get("ok") is False:
-            self._fire_once(
+            self.fire_once(
                 (f"{DOMAIN}_backup_failed", "backup"),
                 payload.get("at"),
                 {
@@ -885,7 +890,7 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
         parcel = self.data.parcels.get(str(ret.get("parcel_id") or "")) or {}
         # What makes this a new change: everything but the timestamps.
         change = {k: v for k, v in ret.items() if k not in ("created_at", "updated_at")}
-        self._fire_once(
+        self.fire_once(
             (f"{DOMAIN}_{RETURN_EVENT_SUFFIXES[event_type]}", return_id),
             change,
             {
@@ -960,7 +965,7 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
             live.get("state"),
             live.get("stops_away"),
         ]
-        self._fire_once(
+        self.fire_once(
             (f"{DOMAIN}_{SERVER_EVENT_SUFFIXES[event_type]}", parcel_id),
             change,
             {

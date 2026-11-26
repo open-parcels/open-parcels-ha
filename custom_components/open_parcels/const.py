@@ -114,6 +114,11 @@ CONNECTION_SNAPSHOT_EVENTS = frozenset(
     {"connection.added", "connection.updated", "connection.run_finished"}
 )
 CONNECTION_STATE_EVENT = "connection.state_changed"
+# A connection action's job moved on: kept for the job sensor; a paused or finished one is
+# fired on the bus as f"{DOMAIN}_job_paused" / f"{DOMAIN}_job_finished" (jobs.py).
+JOB_EVENTS = frozenset(
+    {"job.queued", "job.started", "job.progress", "job.paused", "job.finished"}
+)
 # A parcel's place changed (scans placed by their place names): taken as a parcel
 # snapshot, not fired on the bus.
 PARCEL_LOCATION_EVENT = "parcel.location_changed"

@@ -91,6 +91,9 @@ def client(stream: FakeStream) -> Generator[MagicMock]:
     )
     mock.async_archive_parcel = AsyncMock(return_value={})
     mock.async_sync_connection = AsyncMock(return_value=None)
+    mock.async_get_jobs = AsyncMock(side_effect=lambda: payloads.jobs())
+    mock.async_run_action = AsyncMock(return_value={})
+    mock.async_cancel_job = AsyncMock(return_value=payloads.job(state="running"))
     mock.async_validate = AsyncMock(return_value=None)
     mock.async_stream_events = stream
     with (

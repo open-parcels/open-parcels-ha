@@ -309,6 +309,23 @@ class OpenParcelsClient:
         """POST /connections/{id}/sync."""
         await self._request("POST", f"/connections/{_segment(connection_id)}/sync")
 
+    async def async_get_jobs(self) -> list[dict[str, Any]]:
+        """GET /jobs: every connection's jobs, newest first."""
+        return list(await self._request("GET", "/jobs"))
+
+    async def async_run_action(
+        self, connection_id: str, action: str, action_input: dict[str, Any]
+    ) -> dict[str, Any]:
+        """POST /connections/{id}/actions/{action}: `{job}` for a task, `{url}` for a link."""
+        path = f"/connections/{_segment(connection_id)}/actions/{_segment(action)}"
+        return dict(
+            await self._request("POST", path, body={"input": action_input}) or {}
+        )
+
+    async def async_cancel_job(self, job_id: str) -> dict[str, Any]:
+        """POST /jobs/{id}/cancel."""
+        return dict(await self._request("POST", f"/jobs/{_segment(job_id)}/cancel"))
+
     async def async_validate(self) -> None:
         """Check the token can read and write, without changing anything.
 

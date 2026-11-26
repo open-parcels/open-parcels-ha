@@ -39,6 +39,8 @@ def _missing(kind: str, objects: list[dict[str, Any]]) -> list[str]:
         ),
         ("connection", payloads.CONNECTIONS),
         ("carrier", payloads.CARRIERS),
+        ("action", payloads.ACTIONS),
+        ("job", payloads.jobs()),
         ("calendar_entry", payloads.calendar_entries()),
         ("return", payloads.returns()),
     ],

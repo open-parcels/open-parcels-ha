@@ -204,6 +204,38 @@
           "description": "Optional: die Open-Parcels-Kennung eines Pakets, das zuerst aktualisiert wird."
         }
       }
+    },
+    "run_action": {
+      "name": "Aktion ausführen",
+      "description": "Startet eine Aktion einer Verbindung, etwa den Import ihres Verlaufs. Ihr Auftrag meldet sich über den Auftragssensor der Verbindung.",
+      "fields": {
+        "device_id": {
+          "name": "Verbindung",
+          "description": "Das Gerät der Verbindung."
+        },
+        "action": {
+          "name": "Aktion",
+          "description": "Die Kennung der Aktion, wie der Server sie nennt (zum Beispiel import_history)."
+        },
+        "input": {
+          "name": "Eingaben",
+          "description": "Optional: die Eingaben der Aktion; fehlende Felder nehmen ihre Vorgabe."
+        },
+        "confirm": {
+          "name": "Bestätigen",
+          "description": "Nötig für eine Aktion, die Daten löscht oder überschreibt."
+        }
+      }
+    },
+    "cancel_job": {
+      "name": "Auftrag abbrechen",
+      "description": "Bricht den laufenden Auftrag einer Verbindung ab. Was er schon importiert hat, bleibt.",
+      "fields": {
+        "device_id": {
+          "name": "Verbindung",
+          "description": "Das Gerät der Verbindung."
+        }
+      }
     }
   },
   "device_automation": {
@@ -322,6 +354,18 @@
       },
       "last_backup": {
         "name": "Letzte Sicherung"
+      },
+      "job": {
+        "name": "Auftrag",
+        "state": {
+          "queued": "Wartet",
+          "running": "Läuft",
+          "paused": "Pausiert",
+          "done": "Fertig",
+          "partial": "Vorzeitig beendet",
+          "failed": "Fehlgeschlagen",
+          "cancelled": "Abgebrochen"
+        }
       }
     }
   },
@@ -361,6 +405,24 @@
     },
     "backup_failed": {
       "message": "Die Sicherung des Servers ist fehlgeschlagen: {error}"
+    },
+    "action_refused": {
+      "message": "Der Server kann diese Aktion gerade nicht starten: {message}"
+    },
+    "action_failed": {
+      "message": "Die Aktion konnte nicht gestartet werden: {error}"
+    },
+    "connection_device_required": {
+      "message": "Wähle das Gerät einer Open-Parcels-Verbindung."
+    },
+    "no_such_action": {
+      "message": "Diese Verbindung hat keine Aktion {action}."
+    },
+    "confirm_required": {
+      "message": "Diese Aktion löscht oder überschreibt Daten: setze confirm auf true, um sie auszuführen."
+    },
+    "no_active_job": {
+      "message": "Diese Verbindung hat keinen Auftrag zum Abbrechen."
     }
   }
 }

@@ -31,12 +31,15 @@
       "last_backup": { "default": "mdi:database-clock" },
       "open_returns": { "default": "mdi:keyboard-return" },
       "connection_state": { "default": "mdi:account-sync" },
+      "job": { "default": "mdi:progress-clock", "state": { "running": "mdi:progress-download", "paused": "mdi:pause-circle-outline", "done": "mdi:check-circle-outline", "failed": "mdi:alert-circle-outline" } },
       "order": { "default": "mdi:shopping", "state": { "partially_delivered": "mdi:shopping-outline" } }
     }
   },
   "services": {
     "track_parcel": { "service": "mdi:package-variant-plus" },
     "archive_parcel": { "service": "mdi:archive-arrow-down" },
-    "refresh": { "service": "mdi:refresh" }
+    "refresh": { "service": "mdi:refresh" },
+    "run_action": { "service": "mdi:play-circle-outline" },
+    "cancel_job": { "service": "mdi:stop-circle-outline" }
   }
 }

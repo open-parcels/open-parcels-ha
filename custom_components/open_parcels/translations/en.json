@@ -204,6 +204,38 @@
           "description": "Optional: the Open Parcels id of a parcel to update first."
         }
       }
+    },
+    "run_action": {
+      "name": "Run action",
+      "description": "Start one of a connection's actions, such as importing its history. Its job reports through the connection's job sensor.",
+      "fields": {
+        "device_id": {
+          "name": "Connection",
+          "description": "The device of the connection."
+        },
+        "action": {
+          "name": "Action",
+          "description": "The action's id, as the server lists it (for example import_history)."
+        },
+        "input": {
+          "name": "Input",
+          "description": "Optional: the action's input; fields left out take their defaults."
+        },
+        "confirm": {
+          "name": "Confirm",
+          "description": "Required for an action that deletes or overwrites data."
+        }
+      }
+    },
+    "cancel_job": {
+      "name": "Cancel job",
+      "description": "Cancel the job a connection is busy with. What it already imported stays.",
+      "fields": {
+        "device_id": {
+          "name": "Connection",
+          "description": "The device of the connection."
+        }
+      }
     }
   },
   "device_automation": {
@@ -322,6 +354,18 @@
       },
       "last_backup": {
         "name": "Last backup"
+      },
+      "job": {
+        "name": "Job",
+        "state": {
+          "queued": "Waiting",
+          "running": "Running",
+          "paused": "Paused",
+          "done": "Done",
+          "partial": "Stopped early",
+          "failed": "Failed",
+          "cancelled": "Cancelled"
+        }
       }
     }
   },
@@ -361,6 +405,24 @@
     },
     "backup_failed": {
       "message": "Could not back up the server: {error}"
+    },
+    "action_refused": {
+      "message": "The server cannot start this action now: {message}"
+    },
+    "action_failed": {
+      "message": "Starting the action failed: {error}"
+    },
+    "connection_device_required": {
+      "message": "Choose the device of an Open Parcels connection."
+    },
+    "no_such_action": {
+      "message": "This connection has no action {action}."
+    },
+    "confirm_required": {
+      "message": "This action deletes or overwrites data: set confirm to true to run it."
+    },
+    "no_active_job": {
+      "message": "This connection has no job to cancel."
     }
   }
 }

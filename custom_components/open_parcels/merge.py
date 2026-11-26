@@ -19,6 +19,7 @@ from .const import (
     CLOSED_RETURN_STATUSES,
     CONNECTION_REMOVED_EVENT,
     CONNECTION_STATE_EVENT,
+    JOB_EVENTS,
     LIVE_POSITION_EVENT,
     LIVE_TRACKING_STATES,
     ORDER_CREATED_EVENT,
@@ -58,6 +59,9 @@ class OpenParcelsData:
     status: dict[str, Any] = field(default_factory=dict)
     # The newest backup attempt (ok, reason, at, file, bytes, error); None before the first.
     last_backup: dict[str, Any] | None = None
+    # Each provider's actions (GET /carriers), and each connection's newest job.
+    actions: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    jobs: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 
 def _number(value: Any) -> float | None:
@@ -326,6 +330,25 @@ def merge_return(data: OpenParcelsData, ret: dict[str, Any]) -> bool:
     return True
 
 
+def merge_job(data: OpenParcelsData, payload: dict[str, Any]) -> dict[str, Any] | None:
+    """Keep the job a live event carries as its connection's newest; None when stale."""
+    job = payload.get("job")
+    if not isinstance(job, dict) or not job.get("connection_id"):
+        return None
+    connection_id = str(job["connection_id"])
+    current = data.jobs.get(connection_id)
+    if current is not None and current.get("id") != job.get("id"):
+        # Another job: only a newer one replaces it.
+        if str(job.get("created_at") or "") < str(current.get("created_at") or ""):
+            return None
+    elif current is not None and str(job.get("updated_at") or "") < str(
+        current.get("updated_at") or ""
+    ):
+        return None
+    data.jobs[connection_id] = job
+    return job
+
+
 def reapply(
     data: OpenParcelsData,
     positions: dict[str, CourierPosition],
@@ -350,6 +373,8 @@ def reapply(
         merge_order_updated(data, payload)
     elif event_type == BACKUP_FINISHED_EVENT:
         merge_backup(data, payload)
+    elif event_type in JOB_EVENTS:
+        merge_job(data, payload)
     elif event_type == ORDER_DELETED_EVENT:
         merge_order_deleted(data, payload)
     elif event_type in RETURN_EVENT_SUFFIXES:

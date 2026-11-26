@@ -50,3 +50,31 @@ refresh:
     parcel_id:
       selector:
         text:
+
+run_action:
+  fields:
+    device_id:
+      required: true
+      selector:
+        device:
+          integration: open_parcels
+    action:
+      required: true
+      example: import_history
+      selector:
+        text:
+    input:
+      selector:
+        object:
+    confirm:
+      default: false
+      selector:
+        boolean:
+
+cancel_job:
+  fields:
+    device_id:
+      required: true
+      selector:
+        device:
+          integration: open_parcels

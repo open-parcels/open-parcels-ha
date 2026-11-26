@@ -12,6 +12,36 @@ PARCEL_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"  # gls, at pickup point
 PARCEL_C = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"  # dhl, delivered
 PARCEL_D = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"  # no connection, sending
 
+
+def _action(action_id: str, **overrides: Any) -> dict[str, Any]:
+    return {
+        "id": action_id,
+        "kind": "task",
+        "label": action_id.replace("_", " ").capitalize(),
+        "description": None,
+        "connection_kinds": ["account"],
+        "when_state": ["ok", "idle"],
+        "weight": "light",
+        "confirm": None,
+        "destructive": False,
+        "expose_to_ha": True,
+        "cooldown_minutes": 0,
+        "input_schema": None,
+        "input_required": False,
+        **overrides,
+    }
+
+
+# DHL's made-up actions: only import_history is a button (the others are a link, need
+# input, are destructive, or are not meant for Home Assistant).
+ACTIONS: list[dict[str, Any]] = [
+    _action("import_history", label="Import history", weight="heavy"),
+    _action("open_account", kind="link", expose_to_ha=False),
+    _action("by_year", input_required=True, input_schema={"type": "object"}),
+    _action("wipe", destructive=True),
+    _action("web_only", expose_to_ha=False),
+]
+
 CARRIERS: list[dict[str, Any]] = [
     {
         "id": carrier_id,
@@ -22,8 +52,12 @@ CARRIERS: list[dict[str, Any]] = [
         "sign_in_flows": [],
         "config_schema": [],
         "secret_schema": [],
+        "actions": actions,
     }
-    for carrier_id, name in (("dhl", "DHL"), ("gls", "GLS"))
+    for carrier_id, name, actions in (
+        ("dhl", "DHL", [*ACTIONS]),
+        ("gls", "GLS", []),
+    )
 ]
 
 CONNECTIONS: list[dict[str, Any]] = [
@@ -364,3 +398,31 @@ def backups() -> dict[str, Any]:
         "failing": False,
         "files": [],
     }
+
+
+JOB_DHL = "0b0b0b0b-0b0b-4b0b-8b0b-0b0b0b0b0b0b"
+
+
+def job(**overrides: Any) -> dict[str, Any]:
+    """A made-up import on the DHL connection, running."""
+    return {
+        "id": JOB_DHL,
+        "connection_id": CONNECTION_DHL,
+        "provider": "dhl",
+        "action": "import_history",
+        "state": "running",
+        "reason": None,
+        "progress": {"done": 2, "total": 5, "phase": "2029: page 3"},
+        "summary": None,
+        "created_at": "2030-01-02T08:00:00.000Z",
+        "started_at": "2030-01-02T08:00:01.000Z",
+        "updated_at": "2030-01-02T08:30:00.000Z",
+        "finished_at": None,
+        "resume_at": None,
+        **overrides,
+    }
+
+
+def jobs() -> list[dict[str, Any]]:
+    """GET /jobs: newest first."""
+    return [job()]

@@ -1,5 +1,5 @@
 {
-  "_source": "open-parcels docs/openapi.json, API 2.0.0 (server after ed2426e: state_reason, no calendar details): the required keys of each list item. Refresh when the server contract changes.",
+  "_source": "open-parcels docs/openapi.json, API 2.0.0 (server after ed2426e: state_reason, no calendar details): the required keys of each list item. With connection actions and jobs. Refresh when the server contract changes.",
   "parcel": [
     "archived_at",
     "carrier",
@@ -98,6 +98,7 @@
     "url"
   ],
   "carrier": [
+    "actions",
     "config_schema",
     "connection_kinds",
     "countries",
@@ -106,5 +107,35 @@
     "secret_schema",
     "sign_in",
     "sign_in_flows"
+  ],
+  "action": [
+    "confirm",
+    "connection_kinds",
+    "cooldown_minutes",
+    "description",
+    "destructive",
+    "expose_to_ha",
+    "id",
+    "input_required",
+    "input_schema",
+    "kind",
+    "label",
+    "weight",
+    "when_state"
+  ],
+  "job": [
+    "action",
+    "connection_id",
+    "created_at",
+    "finished_at",
+    "id",
+    "progress",
+    "provider",
+    "reason",
+    "resume_at",
+    "started_at",
+    "state",
+    "summary",
+    "updated_at"
   ]
 }

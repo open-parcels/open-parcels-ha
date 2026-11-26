@@ -29,6 +29,7 @@ from .entity import (
     connection_ids,
     device_for_connection,
 )
+from .jobs import JOB_STATES
 from .parcels import count_by_carrier, next_delivery, parse_iso
 from .returns import return_summary
 
@@ -81,6 +82,7 @@ async def async_setup_entry(
         entities.append(NextDeliverySensor(coordinator, connection_id, "next_delivery"))
         entities.append(ConnectionLastOkSensor(coordinator, connection_id))
         entities.append(ConnectionStateSensor(coordinator, connection_id))
+        entities.append(ConnectionJobSensor(coordinator, connection_id))
         return entities
 
     async_add_dynamic(
@@ -280,6 +282,47 @@ class ConnectionStateSensor(OpenParcelsConnectionEntity, SensorEntity):
             "last_run_at": connection.get("last_run_at"),
             "next_run_at": connection.get("next_run_at"),
             "last_ok_at": connection.get("last_ok_at"),
+        }
+
+
+class ConnectionJobSensor(OpenParcelsConnectionEntity, SensorEntity):
+    """The connection's newest job: its state, and progress as attributes."""
+
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_translation_key = "job"
+    _attr_options = list(JOB_STATES)
+
+    def __init__(self, coordinator: OpenParcelsCoordinator, connection_id: str) -> None:
+        """Belongs to the connection's device; kept current by the `job.*` events."""
+        super().__init__(coordinator, connection_id, "job")
+
+    @property
+    def _job(self) -> dict[str, Any]:
+        data = self.coordinator.data
+        return (data.jobs.get(self._connection_id) if data else None) or {}
+
+    @property
+    def native_value(self) -> str | None:
+        """The job's state; None without a job, or for a state this version does not know."""
+        state = self._job.get("state")
+        return state if state in self._attr_options else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Which action, how far, why it waits, and what it did."""
+        job = self._job
+        progress = job.get("progress") or {}
+        return {
+            "job_id": job.get("id"),
+            "action": job.get("action"),
+            "done": progress.get("done"),
+            "total": progress.get("total"),
+            "phase": progress.get("phase"),
+            "summary": job.get("summary"),
+            "reason": job.get("reason"),
+            "resume_at": job.get("resume_at"),
+            "started_at": job.get("started_at"),
+            "finished_at": job.get("finished_at"),
         }
 
 
