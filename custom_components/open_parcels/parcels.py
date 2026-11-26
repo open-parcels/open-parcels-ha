@@ -56,7 +56,7 @@ def is_delivered(parcel: Mapping[str, Any]) -> bool:
 def owner_connection_id(parcel: Mapping[str, Any]) -> str | None:
     """The connection whose device the parcel's entities live on.
 
-    The primary connection wins, then a hand-off, then a mail connection. A parcel no
+    The primary connection wins, then a hand-off, then an email connection (role `mail`). A parcel no
     connection follows (tracked by code only) belongs to the hub.
     """
     refs = [ref for ref in parcel.get("connections") or [] if isinstance(ref, Mapping)]
