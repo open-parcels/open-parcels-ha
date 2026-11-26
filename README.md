@@ -73,7 +73,7 @@ Assistant asks for a new one (reauthentication).
 | `sensor.open_parcels_awaiting_pickup` | `awaiting_pickup` | ready to collect | `by_carrier`, `parcels` |
 | `sensor.open_parcels_next_delivery` | `next_delivery` | earliest `expected_from` (timestamp) | `tracking_number`, `sender`, `receiver`, `by_carrier`, `parcel` |
 | `sensor.open_parcels_last_successful_update` | `last_update` | last full resync (diagnostic) | |
-| `sensor.open_parcels_open_returns` | `open_returns` | returns still going on (servers with returns) | `returns`: order number, shop, items, status, `return_by`, drop-off options, `free`, cost, label URL |
+| `sensor.open_parcels_open_returns` | `open_returns` | returns still going on (servers with returns) | `returns`: order number, shop, items, status, `return_by`, drop-off options, `free`, cost, label URL (drop-off and cost in Home Assistant's language) |
 | `calendar.open_parcels_deliveries` | `deliveries` | next expected delivery | the same entries as the server's calendar and ICS feed; a return's last day reads "Return by: <item or shop>" with its drop-off options and cost |
 | `button.open_parcels_refresh` | `refresh` | | resyncs everything now |
 | `binary_sensor.open_parcels_event_stream` | `event_stream` | event stream connected (diagnostic) | `events_received` |

@@ -16,13 +16,10 @@ from pytest_homeassistant_custom_component.common import (
     async_get_device_automations,
 )
 
-from custom_components.open_parcels.calendar import (
-    async_calendar_texts,
-    to_calendar_event,
-)
+from custom_components.open_parcels.calendar import to_calendar_event
 from custom_components.open_parcels.const import DOMAIN
 from custom_components.open_parcels.device import find_device
-from custom_components.open_parcels.returns import cost_text, drop_off_text
+from custom_components.open_parcels.texts import async_texts, cost_text, drop_off_text
 
 from . import payloads
 from .conftest import FakeStream, events
@@ -154,7 +151,7 @@ async def test_calendar_return_entry(hass: HomeAssistant) -> None:
         "url": "https://shop.example.test/label/1",
         "pickup_point": None,
     }
-    event = to_calendar_event(entry, await async_calendar_texts(hass))
+    event = to_calendar_event(entry, await async_texts(hass))
     assert event is not None
     assert event.summary == "Return by: Example shoes"
     assert event.description == (
@@ -166,7 +163,7 @@ async def test_calendar_return_entry(hass: HomeAssistant) -> None:
     hass.config.language = "de"
     german = to_calendar_event(
         {**entry, "cost": {"free": True, "amount": None, "currency": None}},
-        await async_calendar_texts(hass),
+        await async_texts(hass),
     )
     assert german is not None
     assert german.summary == "Zurücksenden bis: Example shoes"
@@ -177,12 +174,31 @@ async def test_calendar_return_entry(hass: HomeAssistant) -> None:
     )
 
 
-def test_texts() -> None:
-    """Drop-off and cost words follow the server's."""
-    assert drop_off_text({"kind": "any", "carrier": None}) == "Any drop-off point"
-    assert drop_off_text({"kind": "new_kind"}) == "New kind"
-    assert cost_text(None) is None
-    assert cost_text({"free": False, "amount": None}) == "Return costs money"
-    assert cost_text({"free": False, "amount": 4, "currency": "EUR"}) == (
+async def test_texts(hass: HomeAssistant) -> None:
+    """Drop-off and cost words in HA's language; an unknown kind in the server's words."""
+    texts = await async_texts(hass)
+    assert (
+        drop_off_text(texts, {"kind": "any", "carrier": None}) == "Any drop-off point"
+    )
+    assert drop_off_text(texts, {"kind": "new_kind"}) == "New kind"
+    assert cost_text(texts, None) is None
+    assert cost_text(texts, {"free": False, "amount": None}) == "Return costs money"
+    assert cost_text(texts, {"free": False, "amount": 4, "currency": "EUR"}) == (
         "Return costs 4.00 EUR"
     )
+    hass.config.language = "de"
+    german = await async_texts(hass)
+    assert drop_off_text(german, {"kind": "parcel_locker"}) == "Paketautomat"
+    assert cost_text(german, {"free": False, "amount": 4, "currency": "EUR"}) == (
+        "Rücksendung kostet 4.00 EUR"
+    )
+
+
+async def test_sensor_in_german(hass: HomeAssistant, loaded: MockConfigEntry) -> None:
+    """The sensor's drop-off and cost follow HA's language from the next full load."""
+    hass.config.language = "de"
+    await loaded.runtime_data.coordinator.async_refresh()
+    await _settle(hass)
+    ret = hass.states.get(SENSOR).attributes["returns"][0]
+    assert ret["drop_off"] == ["Paketautomat (dhl)", "Any Example store"]
+    assert ret["cost"] == "Kostenlose Rücksendung"

@@ -99,6 +99,7 @@ from .parcels import (
     to_suite_parcel,
 )
 from .returns import return_summary
+from .texts import async_texts
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -116,7 +117,6 @@ _CALENDAR_EVENTS = frozenset(
         *RETURN_EVENT_SUFFIXES,
     }
 )
-
 
 # Parcel keys left out of bus events (see _fire_parcel_event).
 _EVENT_DROPPED_KEYS = ("raw", "items", "order", "history", "live", "lookup")
@@ -419,7 +419,7 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
             # Two groups: asyncio.gather is typed for at most six awaitables.
             (
                 (connections, carriers, parcels, returns, orders),
-                (status, backups, jobs, inbox_form),
+                (status, backups, jobs, inbox_form, texts),
             ) = await asyncio.gather(
                 asyncio.gather(
                     self.client.async_get_connections(),
@@ -435,6 +435,7 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
                     self._async_get_backups(),
                     self.client.async_get_jobs(),
                     self.client.async_get_inbox_form(),
+                    async_texts(self.hass),
                 ),
             )
         except OpenParcelsAuthError as err:
@@ -449,8 +450,7 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
             ) from err
         await self.async_refresh_calendar()
 
-        # From here on nothing awaits, so no message slips in between the replay
-        # below and the coordinator taking this snapshot as its data.
+        # Nothing awaits from here on: no message slips in before this snapshot.
         data = OpenParcelsData(
             connections={str(s["id"]): s for s in connections if s.get("id")},
             carriers={
@@ -469,14 +469,14 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
             last_backup=loaded_backup(backups, status),
             actions=actions_by_provider(carriers, inbox_form),
             jobs=newest_jobs(jobs),
+            texts=texts,
         )
         self.positions = {
             pid: pos
             for pid, raw in data.parcels.items()
             if (pos := position_from_live(raw.get("live"))) is not None
         }
-        # Messages that arrived while the requests ran may be newer than the
-        # snapshot: apply them again (stale ones are skipped by `updated_at`).
+        # Messages that arrived meanwhile may be newer: apply them again (by `updated_at`).
         for event_type, payload in self._reload_log or []:
             reapply(
                 data,
@@ -896,7 +896,7 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
             (f"{DOMAIN}_{RETURN_EVENT_SUFFIXES[event_type]}", return_id),
             change,
             {
-                **return_summary(ret),
+                **return_summary(ret, self.data.texts),
                 "return_id": return_id,
                 "device_id": self.device_id_for_connection(owner_connection_id(parcel)),
                 "hub_device_id": self.device_id_for_connection(None),

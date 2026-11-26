@@ -62,6 +62,8 @@ class OpenParcelsData:
     # Each provider's actions (GET /carriers), and each connection's newest job.
     actions: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
     jobs: dict[str, dict[str, Any]] = field(default_factory=dict)
+    # Words in Home Assistant's language (texts.py), read on every full load.
+    texts: dict[str, str] = field(default_factory=dict)
 
 
 def _number(value: Any) -> float | None:

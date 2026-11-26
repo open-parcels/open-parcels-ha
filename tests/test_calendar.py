@@ -12,10 +12,8 @@ import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.open_parcels.api import OpenParcelsConnectionError
-from custom_components.open_parcels.calendar import (
-    async_calendar_texts,
-    to_calendar_event,
-)
+from custom_components.open_parcels.calendar import to_calendar_event
+from custom_components.open_parcels.texts import async_texts
 
 
 async def test_calendar(
@@ -50,7 +48,7 @@ async def test_calendar(
 async def test_calendar_entry_edge_cases(hass: HomeAssistant) -> None:
     """Unparseable entries are skipped; inclusive day ends become exclusive dates."""
     await hass.config.async_set_time_zone("UTC")
-    texts = await async_calendar_texts(hass)
+    texts = await async_texts(hass)
     assert to_calendar_event({"start": "nope", "end": None}, texts) is None
     event = to_calendar_event(
         {
@@ -76,7 +74,7 @@ async def test_calendar_entry_edge_cases(hass: HomeAssistant) -> None:
 async def test_all_day_uses_the_server_local_days(hass: HomeAssistant) -> None:
     """A date-only delivery lands on the server's day, whatever HA's zone says."""
     await hass.config.async_set_time_zone("UTC")
-    texts = await async_calendar_texts(hass)
+    texts = await async_texts(hass)
     event = to_calendar_event(
         {
             # Midnight in the server's zone: the day before in UTC.

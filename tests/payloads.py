@@ -379,7 +379,7 @@ def status(overall: str = "ok") -> dict[str, Any]:
         "checked_at": "2030-01-02T12:00:00.000Z",
         "version": "2.0.0",
         "started_at": "2030-01-01T00:00:00.000Z",
-        "database": {"detail": None},
+        "database": {"error": None},
         "connections": [],
         "inboxes": [],
         "scheduler": {

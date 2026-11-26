@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- The open-returns sensor's `drop_off` and `cost` attributes and the return bus events word
+  drop-off kinds and costs in Home Assistant's language (English or German), like the calendar;
+  a language change applies from the next full load.
+- The status fixture follows the server's `database.error` code (was `database.detail`).
+
 ## 0.11.0 (2026-11-26)
 
 Needs an Open Parcels server whose `GET /inbox-form` lists the inbox's actions (2.0.0-dev

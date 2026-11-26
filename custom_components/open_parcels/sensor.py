@@ -209,7 +209,10 @@ class OpenReturnsSensor(OpenParcelsEntity, SensorEntity):
     def extra_state_attributes(self) -> dict[str, Any]:
         """Each open return in short: order, shop, status, deadline, drop-off, cost."""
         return {
-            "returns": [return_summary(ret) for ret in self.coordinator.open_returns()]
+            "returns": [
+                return_summary(ret, self.coordinator.data.texts)
+                for ret in self.coordinator.open_returns()
+            ]
         }
 
 
