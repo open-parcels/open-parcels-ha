@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.10.0 (2026-11-26)
 
 Needs an Open Parcels server with imported history (`parcel.imported`, server migration 0030).
 
