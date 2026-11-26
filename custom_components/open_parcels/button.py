@@ -137,13 +137,10 @@ class ActionButton(OpenParcelsConnectionEntity, ButtonEntity):
 
     @property
     def _action(self) -> dict[str, Any] | None:
-        data = self.coordinator.data
-        if data is None:
-            return None
         return next(
             (
                 action
-                for action in button_actions(data, self._connection_id)
+                for action in button_actions(self.coordinator.data, self._connection_id)
                 if action.get("id") == self._action_id
             ),
             None,
