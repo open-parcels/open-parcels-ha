@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.11.0 (2026-11-26)
 
 Needs an Open Parcels server whose `GET /inbox-form` lists the inbox's actions (2.0.0-dev
 builds with "Read old emails again"); it is read on every load.
