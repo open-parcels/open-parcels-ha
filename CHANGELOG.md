@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.9.0 (2026-11-26)
 
 Needs an Open Parcels server with connection actions and jobs (it reads `GET /jobs` on every
 load).
