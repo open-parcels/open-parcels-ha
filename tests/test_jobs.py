@@ -178,3 +178,39 @@ async def test_run_action_and_cancel_job_services(
             DOMAIN, "cancel_job", {"device_id": "not-a-device"}, blocking=True
         )
     assert raised.value.translation_key == "connection_device_required"
+
+
+async def test_inbox_actions_become_buttons_on_inboxes(
+    hass: HomeAssistant, loaded: MockConfigEntry, client: MagicMock
+) -> None:
+    """The inbox's actions come from GET /inbox-form, not /carriers; an inbox gets its button."""
+    inbox = {
+        **payloads.CONNECTIONS[0],
+        "id": "33333333-3333-4333-8333-333333333333",
+        "provider": "imap",
+        "kind": "mail",
+        "label": "Mail (user@example.invalid)",
+        "config": {},
+    }
+    client.async_get_connections.side_effect = lambda: [
+        *(dict(c) for c in payloads.CONNECTIONS),
+        dict(inbox),
+    ]
+    await hass.services.async_call(
+        "button", "press", {"entity_id": "button.open_parcels_refresh"}, blocking=True
+    )
+    await hass.async_block_till_done()
+
+    registry = er.async_get(hass)
+    button = next(
+        entity.entity_id
+        for entity in er.async_entries_for_config_entry(registry, loaded.entry_id)
+        if entity.unique_id.endswith(f"{inbox['id']}_action_reread_emails")
+    )
+    state = hass.states.get(button)
+    assert state is not None
+    assert state.attributes["friendly_name"].endswith("Read old emails again")
+    await hass.services.async_call(
+        "button", "press", {"entity_id": button}, blocking=True
+    )
+    client.async_run_action.assert_awaited_once_with(inbox["id"], "reread_emails", {})

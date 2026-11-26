@@ -82,6 +82,7 @@ async def test_requests_send_token_and_parse(
     """Each method hits its route with the Bearer token."""
     aioclient_mock.get(f"{API}/connections", json=[{"id": "s"}])
     aioclient_mock.get(f"{API}/carriers", json=[{"id": "dhl"}])
+    aioclient_mock.get(f"{API}/inbox-form", json={"provider": "imap", "actions": []})
     aioclient_mock.get(f"{API}/parcels", json=[{"id": "p"}])
     aioclient_mock.get(f"{API}/calendar", json=[])
     aioclient_mock.post(f"{API}/parcels", json={"id": "p"}, status=201)
@@ -91,6 +92,7 @@ async def test_requests_send_token_and_parse(
 
     assert await client.async_get_connections() == [{"id": "s"}]
     assert await client.async_get_carriers() == [{"id": "dhl"}]
+    assert await client.async_get_inbox_form() == {"provider": "imap", "actions": []}
     assert await client.async_get_parcels(include_history=True, limit=5) == [
         {"id": "p"}
     ]

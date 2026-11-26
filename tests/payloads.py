@@ -60,6 +60,27 @@ CARRIERS: list[dict[str, Any]] = [
     )
 ]
 
+# The inbox's action, as GET /inbox-form lists it (inboxes are no carrier).
+REREAD_ACTION = _action(
+    "reread_emails",
+    label="Read old emails again",
+    connection_kinds=["mail"],
+    weight="heavy",
+    confirm="This reads many emails again, slowly.",
+    cooldown_minutes=60,
+)
+
+
+def inbox_form() -> dict[str, Any]:
+    """GET /inbox-form."""
+    return {
+        "provider": "imap",
+        "config_schema": {},
+        "secret_schema": {},
+        "actions": [dict(REREAD_ACTION)],
+    }
+
+
 CONNECTIONS: list[dict[str, Any]] = [
     {
         "id": CONNECTION_DHL,

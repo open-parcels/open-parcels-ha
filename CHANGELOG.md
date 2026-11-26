@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+Needs an Open Parcels server whose `GET /inbox-form` lists the inbox's actions (2.0.0-dev
+builds with "Read old emails again"); it is read on every load.
+
+### Added
+
+- Inbox actions as buttons: "Read old emails again" on every inbox's device, from
+  `GET /api/v1/inbox-form` (inboxes are no carrier, so `GET /carriers` does not list them).
+
 ## 0.10.0 (2026-11-26)
 
 Needs an Open Parcels server with imported history (`parcel.imported`, server migration 0030).

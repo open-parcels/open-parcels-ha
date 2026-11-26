@@ -1,6 +1,7 @@
 """Connection actions and their jobs: what the buttons, the job sensor and the events read.
 
-The server declares each provider's actions in GET /carriers; a task action runs as a job,
+The server declares each provider's actions in GET /carriers, and the inbox's in
+GET /inbox-form (inboxes are no carrier); a task action runs as a job,
 reported by GET /jobs and the `job.*` live events (the server's
 docs/connection-actions-and-jobs.md).
 """
@@ -25,14 +26,19 @@ _BUS_EVENTS = {
 
 
 def actions_by_provider(
-    carriers: list[dict[str, Any]],
+    carriers: list[dict[str, Any]], inbox_form: dict[str, Any]
 ) -> dict[str, list[dict[str, Any]]]:
-    """Each provider's declared actions, from GET /carriers."""
-    return {
+    """Each provider's declared actions, from GET /carriers and GET /inbox-form."""
+    actions = {
         str(carrier["id"]): [a for a in carrier.get("actions") or [] if a.get("id")]
         for carrier in carriers
         if carrier.get("id")
     }
+    if inbox_form.get("provider"):
+        actions[str(inbox_form["provider"])] = [
+            a for a in inbox_form.get("actions") or [] if a.get("id")
+        ]
+    return actions
 
 
 def newest_jobs(jobs: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:

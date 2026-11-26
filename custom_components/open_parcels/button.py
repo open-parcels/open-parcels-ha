@@ -1,7 +1,7 @@
 """Buttons: resync and back up on the hub; run a connection, or start its actions.
 
-On a connection's device: run it now, and one button per action of its provider that may
-run from Home Assistant (jobs.py).
+On a connection's device: run it now, and one button per action of its provider (or, for an
+inbox, of the inbox) that may run from Home Assistant (jobs.py).
 """
 
 from __future__ import annotations

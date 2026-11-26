@@ -222,6 +222,10 @@ class OpenParcelsClient:
         """GET /carriers."""
         return list(await self._request("GET", "/carriers"))
 
+    async def async_get_inbox_form(self) -> dict[str, Any]:
+        """GET /inbox-form: the inbox's forms and actions (inboxes are no carrier)."""
+        return dict(await self._request("GET", "/inbox-form"))
+
     async def _get_pages(
         self, path: str, params: dict[str, str], limit: int
     ) -> list[dict[str, Any]]:

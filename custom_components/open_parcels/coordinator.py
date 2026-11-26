@@ -419,7 +419,7 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
             # Two groups: asyncio.gather is typed for at most six awaitables.
             (
                 (connections, carriers, parcels, returns, orders),
-                (status, backups, jobs),
+                (status, backups, jobs, inbox_form),
             ) = await asyncio.gather(
                 asyncio.gather(
                     self.client.async_get_connections(),
@@ -434,6 +434,7 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
                     self.client.async_get_status(),
                     self._async_get_backups(),
                     self.client.async_get_jobs(),
+                    self.client.async_get_inbox_form(),
                 ),
             )
         except OpenParcelsAuthError as err:
@@ -466,7 +467,7 @@ class OpenParcelsCoordinator(DataUpdateCoordinator[OpenParcelsData]):
             },
             status=status,
             last_backup=loaded_backup(backups, status),
-            actions=actions_by_provider(carriers),
+            actions=actions_by_provider(carriers, inbox_form),
             jobs=newest_jobs(jobs),
         )
         self.positions = {
